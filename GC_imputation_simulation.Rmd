@@ -1,0 +1,58 @@
+---
+title: "GC_imputation"
+author: "YI-CHENG, TAI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mvtnorm)
+```
+
+```{r}
+rho <- 0.5
+cut.off <- c(-1, 1)
+size <- 500
+Z <- rmvnorm(n = size, sigma = matrix(c(1, rho, rho, 1), nrow = 2))
+T1 <- exp(Z[, 1])
+X1 <- ifelse(Z[, 2] < cut.off[1], 0,
+             ifelse(Z[, 2] < cut.off[2], 1, 2))
+C <- rexp(n = size, rate = 0.5)
+Y1 <- ifelse(T1 < C, T1, C)
+delta <- ifelse(T1 < C, 1, 0)
+```
+
+```{r}
+mean(delta)
+```
+
+```{r}
+df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+
+k <- 1
+for(i in seq(1, size - 1)) {
+  for(j in seq(i + 1, size)) {
+    df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+    k <- k + 1
+  }
+}
+```
+
+probability that $T_i > T_{i'}$
+```{r}
+mean(df.pair[, 4] > df.pair[, 8])
+```
+
+**Case 2** <br>
+```{r}
+df.2 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 3] > df.pair[, 7], ]
+df.2[1, ]
+```
+
+```{r}
+
+```
+
