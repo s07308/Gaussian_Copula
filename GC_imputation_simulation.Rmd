@@ -53,6 +53,93 @@ df.2[1, ]
 ```
 
 ```{r}
+b.imputed.2 <- numeric(length = nrow(df.2))
 
+for(i in seq(1, nrow(df.2))) {
+  if(df.2[i, 5] == 0) {
+    b.imputed.2[i] <- pmvnorm(lower = c(-Inf, log(df.2[i, 6])),
+                              upper = c(cut.off[1], log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(-Inf, log(df.2[i, 6])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  } else if(df.2[i, 5] == 1) {
+    b.imputed.2[i] <- pmvnorm(lower = c(cut.off[1], log(df.2[i, 6])),
+                              upper = c(cut.off[2], log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(cut.off[1], log(df.2[i, 6])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  } else {
+    b.imputed.2[i] <- pmvnorm(lower = c(cut.off[2], log(df.2[i, 6])),
+                              upper = c(Inf, log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(cut.off[2], log(df.2[i, 6])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  }
+}
 ```
 
+```{r}
+## data.frame(b.imputed.2, df.2[, 4] > df.2[, 8]) 
+mean((b.imputed.2 > 0.5) == (df.2[, 4] > df.2[, 8]))
+```
+
+**Case 3** <br>
+```{r}
+df.3 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 3] == 0 & df.pair[, 7] == 0, ]
+df.3[1, ]
+```
+
+```{r}
+b.imputed.3 <- numeric(length = nrow(df.3))
+
+for(i in seq(1, nrow(df.3))) {
+  if(df.2[i, 5] == 0) {
+    b.imputed.2[i] <- pmvnorm(lower = c(-Inf, log(df.2[i, 6])),
+                              upper = c(cut.off[1], log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(-Inf, log(df.2[i, 6])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  } else if(df.2[i, 5] == 1) {
+    b.imputed.2[i] <- pmvnorm(lower = c(cut.off[1], log(df.2[i, 6])),
+                              upper = c(cut.off[2], log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(cut.off[1], log(df.2[i, 6])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  } else {
+    b.imputed.2[i] <- pmvnorm(lower = c(cut.off[2], log(df.2[i, 6])),
+                              upper = c(Inf, log(df.2[i, 2])),
+                              mean = c(0, 0),
+                              corr = matrix(c(1, rho, rho, 1), nrow = 2))
+    
+    b.imputed.2[i] <- b.imputed.2[i] / pmvnorm(lower = c(cut.off[2], log(df.2[i, 6])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = matrix(c(1, rho, rho, 1), nrow = 2))
+  }
+}
+```
+
+```{r}
+## data.frame(b.imputed.2, df.2[, 4] > df.2[, 8]) 
+mean((b.imputed.2 > 0.5) == (df.2[, 4] > df.2[, 8]))
+```
