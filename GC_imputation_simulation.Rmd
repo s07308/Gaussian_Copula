@@ -16,6 +16,7 @@ library(mvtnorm)
 rho <- 0.5
 cut.off <- c(-1, 1)
 size <- 500
+corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
 Z <- rmvnorm(n = size, sigma = matrix(c(1, rho, rho, 1), nrow = 2))
 T1 <- exp(Z[, 1])
 X1 <- ifelse(Z[, 2] < cut.off[1], 0,
@@ -105,13 +106,204 @@ df.3[1, ]
 b.imputed.3 <- numeric(length = nrow(df.3))
 
 for(i in seq(1, nrow(df.3))) {
+  knot <- seq(df.3[i, 2], 20, length.out = 1000)
+  integrand <- numeric(length(knot) - 1)
   
+  if(df.3[i, 1] == 0 & df.3[i, 5] == 0) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                              upper = c(cut.off[1], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(-Inf, log(knot[j])),
+                                             upper = c(cut.off[1], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(-Inf, log(df.3[i, 2])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 1 & df.3[i, 5] == 0) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                              upper = c(cut.off[1], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[1], log(knot[j])),
+                                             upper = c(cut.off[2], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[1], log(df.3[i, 2])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 2 & df.3[i, 5] == 0) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                              upper = c(cut.off[1], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[2], log(knot[j])),
+                                             upper = c(Inf, log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[2], log(df.3[i, 2])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(-Inf, log(df.3[i, 6])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 0 & df.3[i, 5] == 1) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                              upper = c(cut.off[2], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(-Inf, log(knot[j])),
+                                             upper = c(cut.off[1], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(-Inf, log(df.3[i, 2])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 1 & df.3[i, 5] == 1) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                              upper = c(cut.off[2], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[1], log(knot[j])),
+                                             upper = c(cut.off[2], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[1], log(df.3[i, 2])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 2 & df.3[i, 5] == 1) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                              upper = c(cut.off[2], log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[2], log(knot[j])),
+                                             upper = c(Inf, log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[2], log(df.3[i, 2])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[1], log(df.3[i, 6])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 0 & df.3[i, 5] == 2) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                              upper = c(Inf, log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(-Inf, log(knot[j])),
+                                             upper = c(cut.off[1], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(-Inf, log(df.3[i, 2])),
+                                               upper = c(cut.off[1], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  } else if(df.3[i, 1] == 1 & df.3[i, 5] == 2) {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                              upper = c(Inf, log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[1], log(knot[j])),
+                                             upper = c(cut.off[2], log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[1], log(df.3[i, 2])),
+                                               upper = c(cut.off[2], Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+  } else {
+    for(j in seq(1, length(knot) - 1)) {
+      integrand[j] <- pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                              upper = c(Inf, log(knot[j])),
+                              mean = c(0, 0),
+                              corr = corr.matrix)
+      integrand[j] <- integrand[j] * pmvnorm(lower = c(cut.off[2], log(knot[j])),
+                                             upper = c(Inf, log(knot[j + 1])),
+                                             mean = c(0, 0),
+                                             corr = corr.matrix)
+    }
+    
+    b.imputed.3[i] <- sum(integrand) / pmvnorm(lower = c(cut.off[2], log(df.3[i, 2])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    b.imputed.3[i] <- b.imputed.3[i] / pmvnorm(lower = c(cut.off[2], log(df.3[i, 6])),
+                                               upper = c(Inf, Inf),
+                                               mean = c(0, 0),
+                                               corr = corr.matrix)
+    
+  }
 }
 ```
 
 ```{r}
 ## data.frame(b.imputed.2, df.2[, 4] > df.2[, 8]) 
-mean((b.imputed.2 > 0.5) == (df.2[, 4] > df.2[, 8]))
+mean((b.imputed.3 > 0.5) == (df.3[, 4] > df.3[, 8]))
 ```
 
 **Case 5** <br>
