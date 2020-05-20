@@ -47,10 +47,18 @@ probability that $T_i > T_{i'}$
 mean(df.pair[, 4] > df.pair[, 8])
 ```
 
+**Case 1** <br>
+$y_i > y_{i'}, \delta_{i'} = 1$
+```{r}
+df.1 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1, ]
+b.imputed.1 <- rep(1, nrow(df.1))
+```
+
 **Case 2** <br>
+$y_i > y_{i'}, \delta_{i'} = 0$
 ```{r}
 df.2 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 3] > df.pair[, 7], ]
-df.2[1, ]
+## df.2[1, ]
 ```
 
 ```{r}
@@ -94,9 +102,12 @@ for(i in seq(1, nrow(df.2))) {
 ```{r}
 ## data.frame(b.imputed.2, df.2[, 4] > df.2[, 8]) 
 mean((b.imputed.2 > 0.5) == (df.2[, 4] > df.2[, 8]))
+sum(df.2[, 4] > df.2[, 8])
+sum(b.imputed.2)
 ```
 
 **Case 3** <br>
+$y_i > y_{i'}, \delta_i = \delta_{i'} = 0$
 ```{r}
 df.3 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 3] == 0 & df.pair[, 7] == 0, ]
 df.3[1, ]
@@ -306,7 +317,15 @@ for(i in seq(1, nrow(df.3))) {
 mean((b.imputed.3 > 0.5) == (df.3[, 4] > df.3[, 8]))
 ```
 
+**Case 4** <br
+$y_i < y_{i'}, \delta_i = 1$
+```{r}
+df.4 <- df.pair[df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1, ]
+b.imputed.4 <- rep(0, nrow(df.4))
+```
+
 **Case 5** <br>
+$y_i < y_{i'}, \delta_i = 0, \delta_{i'} = 1$
 ```{r}
 df.5 <- df.pair[df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 0 & df.pair[, 7] == 1, ]
 df.5[1, ]
@@ -563,6 +582,18 @@ for(i in seq(1, nrow(df.6))) {
 ```{r}
 ## data.frame(b.imputed.6, df.6[, 4] > df.6[, 8]) 
 mean((b.imputed.6 > 0.5) == (df.6[, 4] > df.6[, 8]))
+```
+
+```{r}
+nrow(df.pair[df.pair[, 4] > df.pair[, 8], ])
+sum(c(b.imputed.1, b.imputed.2, b.imputed.3, b.imputed.4, b.imputed.5, b.imputed.6))
+```
+
+**Case 7** <br>
+$y_i > y_{i'}, \delta_{i'} = 1$
+```{r}
+df.7 <- df.pair[df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1, ]
+c.imputed.7 <- rep(0, nrow(df.7))
 ```
 
 **Case 8** <br>
@@ -824,6 +855,13 @@ for(i in seq(1, nrow(df.9))) {
 mean((c.imputed.9 > 0.5) == (df.9[, 4] < df.9[, 8]))
 ```
 
+**Case 10** <br>
+$y_i < y_{i'}, \delta_i = 1$
+```{r}
+df.10 <- df.pair[df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1, ]
+c.imputed.10 <- rep(1, nrow(df.10))
+```
+
 **Case 11** <br>
 ```{r}
 df.11 <- df.pair[df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 0 & df.pair[, 7] == 1, ]
@@ -1081,4 +1119,9 @@ for(i in seq(1, nrow(df.12))) {
 ```{r}
 ## data.frame(b.imputed.6, df.6[, 4] > df.6[, 8]) 
 mean((c.imputed.12 > 0.5) == (df.12[, 4] < df.12[, 8]))
+```
+
+```{r}
+nrow(df.pair[df.pair[, 4] < df.pair[, 8], ])
+sum(c(c.imputed.7, c.imputed.8, c.imputed.9, c.imputed.10, c.imputed.11, c.imputed.12))
 ```
