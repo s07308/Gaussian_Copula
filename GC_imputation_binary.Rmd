@@ -16,10 +16,10 @@ library(survival)
 ```{r}
 ## generate (Y, delta, X), where X is ternary and Y is lifetime with censoring
 ## sample size
-size <- 5000
+size <- 50
 
 ## correlation of latent Gaussian distribution
-rho <- -0.3 
+rho <- 0.5 
 
 ## correlation matrix of latent Gaussian
 corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
@@ -37,7 +37,7 @@ T1 <- exp(Z[, 1])
 X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
 
 ## generate the censoring variable
-C <- rexp(n = size, rate = 0.07)
+C <- rexp(n = size, rate = 0.5)
 
 ## Make the censored observation for lifetime
 Y1 <- ifelse(T1 < C, T1, C)
@@ -62,6 +62,7 @@ for(i in seq(1, size - 1)) {
 }
 ```
 
+## empirical estimator
 ```{r}
 H10.hat <- function(x, y, X1.obs = X1, T1.obs = T1) {
   return(mean(X1.obs == x & T1.obs > y))
@@ -71,6 +72,32 @@ H11.hat <- function(x, s, X1.obs = X1, T1.obs = T1) {
   return(mean(X1.obs == x & T1.obs == s))
 }
 ```
+
+## IPCW estimator
+```{r}
+G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+max(G.fit$time)
+
+H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+  if(G_func(y) == 0) {
+    print(y)
+    # Sys.sleep(10)
+  }
+  
+  return(mean(X1.obs == x & T1.obs > y) / G_func(y))
+}
+
+H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+  if(G_func(y) == 0) {
+    print(y)
+    # Sys.sleep(10)
+  }
+  
+  return(mean(X1.obs == x & T1.obs == y) / G_func(y))
+}
+```
+
 
 ```{r}
 c.hat <- numeric(nrow(df.pair))
@@ -191,6 +218,8 @@ sum(c.hat) - sum(d.hat)
 sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
 ```
 
+
+## rate of C: 0.07, 0.28, 0.65, 1.4, 4
 ```{r}
 sim <- replicate(n = 2000, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
@@ -201,7 +230,7 @@ sim <- replicate(n = 2000, expr = {
   Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
   T1 <- exp(Z[, 1])
   X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
-  C <- rexp(n = size, rate = 0.07)
+  C <- rexp(n = size, rate = 4)
   Y1 <- ifelse(T1 < C, T1, C)
   delta <- ifelse(T1 < C, 1, 0)
   
@@ -343,7 +372,7 @@ sim <- replicate(n = 2000, expr = {
 ```
 
 ```{r}
-hist(sim)
+hist(sim, main = "rho:0.9, censoring rate:0.9", xlab = NA)
 mean(sim, na.rm = TRUE)
 sd(sim, na.rm = TRUE)
 ```

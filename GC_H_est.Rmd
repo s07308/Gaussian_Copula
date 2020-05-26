@@ -46,106 +46,133 @@ Y1 <- ifelse(T1 < C, T1, C)
 delta <- ifelse(T1 < C, 1, 0)
 ```
 
-#### The true distribution of H
+```{r}
+mean(1 - delta)
+```
+
 $$
-H(x, y) = Pr(X = x, T > y)
+H_{10}(x, y) = Pr(X = x, T > y)
 $$
 ```{r}
 knot <- seq(0, 10, length.out = 500)
-H.true <- matrix(nrow = length(knot), ncol = 3)
-colnames(H.true) <- c("contr", "treat", "overall")
+H10.true <- matrix(nrow = length(knot), ncol = 3)
+colnames(H10.true) <- c("contr", "treat", "overall")
 
 for(i in seq(1, length(knot))) {
-  H.true[i, "contr"] <- pmvnorm(lower = c(-Inf, log(knot[i])),
-                                upper = c(cut.off, Inf),
-                                sigma = corr.matrix)[1]
-  H.true[i, "treat"] <- pmvnorm(lower = c(cut.off, log(knot[i])),
-                                upper = c(Inf, Inf),
-                                sigma = corr.matrix)[1]
-  H.true[i, "overall"] <- 1 - pnorm(q = log(knot[i]))
+  H10.true[i, "contr"] <- pmvnorm(lower = c(-Inf, log(knot[i])),
+                                  upper = c(cut.off, Inf),
+                                  sigma = corr.matrix)[1]
+  H10.true[i, "treat"] <- pmvnorm(lower = c(cut.off, log(knot[i])),
+                                  upper = c(Inf, Inf),
+                                  sigma = corr.matrix)[1]
+  H10.true[i, "overall"] <- 1 - pnorm(q = log(knot[i]))
 }
 
-plot(knot, H.true[, "contr"], type = "l", ylim = c(0, 1))
-points(knot, H.true[, "treat"], type = "l", lty = 2)
-points(knot, H.true[, "overall"], type = "l", lty = 3)
+plot(knot, H10.true[, "contr"], type = "l", ylim = c(0, 1))
+points(knot, H10.true[, "treat"], type = "l", lty = 2)
+points(knot, H10.true[, "overall"], type = "l", lty = 3)
 legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
 ```
 
 ```{r}
-H.hat <- matrix(nrow = length(knot), ncol = 3)
-colnames(H.hat) <- c("contr", "treat", "overall")
+H10.hat <- matrix(nrow = length(knot), ncol = 3)
+colnames(H10.hat) <- c("contr", "treat", "overall")
 
 for(i in seq(1, length(knot))) {
-  H.hat[i, "contr"] <- mean(X1 == 0 & T1 > knot[i])
-  H.hat[i, "treat"] <- mean(X1 == 1 & T1 > knot[i])
-  H.hat[i, "overall"] <- mean(T1 > knot[i])
+  H10.hat[i, "contr"] <- mean(X1 == 0 & T1 > knot[i])
+  H10.hat[i, "treat"] <- mean(X1 == 1 & T1 > knot[i])
+  H10.hat[i, "overall"] <- mean(T1 > knot[i])
 }
 
-plot(knot, H.hat[, "contr"], type = "l", ylim = c(0, 1))
-points(knot, H.hat[, "treat"], type = "l", lty = 2)
-points(knot, H.hat[, "overall"], type = "l", lty = 3)
+plot(knot, H10.hat[, "contr"], type = "l", ylim = c(0, 1))
+points(knot, H10.hat[, "treat"], type = "l", lty = 2)
+points(knot, H10.hat[, "overall"], type = "l", lty = 3)
 legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
 ```
 
 ```{r}
-G.fit <- survfit(Surv(time = C, event = 1 - delta) ~ 1)
+G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
 G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv)) 
 
-H.tilde <- matrix(nrow = length(knot), ncol = 3)
-colnames(H.tilde) <- c("contr", "treat", "overall")
+H10.tilde <- matrix(nrow = length(knot), ncol = 3)
+colnames(H10.tilde) <- c("contr", "treat", "overall")
 
 for(i in seq(1, length(knot))) {
-  H.tilde[i, "contr"] <- mean(X1 == 0 & Y1 > knot[i]) / G_func(knot[i])
-  H.tilde[i, "treat"] <- mean(X1 == 1 & Y1 > knot[i]) / G_func(knot[i])
-  H.tilde[i, "overall"] <- mean(Y1 > knot[i]) / G_func(knot[i])
+  H10.tilde[i, "contr"] <- mean(X1 == 0 & Y1 > knot[i]) / G_func(knot[i])
+  H10.tilde[i, "treat"] <- mean(X1 == 1 & Y1 > knot[i]) / G_func(knot[i])
+  H10.tilde[i, "overall"] <- mean(Y1 > knot[i]) / G_func(knot[i])
 }
 
-plot(knot, H.tilde[, "contr"], type = "l", ylim = c(0, 1))
-points(knot, H.tilde[, "treat"], type = "l", lty = 2)
-points(knot, H.tilde[, "overall"], type = "l", lty = 3)
+plot(knot, H10.tilde[, "contr"], type = "l", ylim = c(0, 1))
+points(knot, H10.tilde[, "treat"], type = "l", lty = 2)
+points(knot, H10.tilde[, "overall"], type = "l", lty = 3)
 legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
 ```
 
+
+
 ```{r}
-G.fit <- survfit(Surv(time = C, event = 1 - delta) ~ 1)
+plot(knot, H10.true[, "contr"], type = "l")
+points(knot, H10.hat[, "contr"], type = "l", lty = 2)
+points(knot, H10.tilde[, "contr"], type = "l", lty = 3)
+legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
+
+
+plot(knot, H10.true[, "treat"], type = "l")
+points(knot, H10.hat[, "treat"], type = "l", lty = 2)
+points(knot, H10.tilde[, "treat"], type = "l", lty = 3)
+legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
+
+
+plot(knot, H10.true[, "overall"], type = "l")
+points(knot, H10.hat[, "overall"], type = "l", lty = 2)
+points(knot, H10.tilde[, "overall"], type = "l", lty = 3)
+legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
+```
+
+```{r}
+plot(G.fit)
+points(knot, 1 - pexp(knot, rate = 0.5), type = "l", lty = 3)
+```
+
+$$
+H_{11}(x, y) = Pr(X = x, T = y)
+$$
+
+```{r}
+H11.hat <- matrix(nrow = length(T1), ncol = 3)
+colnames(H11.hat) <- c("contr", "treat", "overall")
+
+for(i in seq(1, length(T1))) {
+  H11.hat[i, "contr"] <- mean(X1 == 0 & T1 == T1[i])
+  H11.hat[i, "treat"] <- mean(X1 == 1 & T1 == T1[i])
+  H11.hat[i, "overall"] <- mean(T1 == T1[i])
+}
+
+# plot(T1, H11.hat[, "contr"], type = "b", ylim = c(0, 1))
+# points(T1, H11.hat[, "treat"], type = "b", lty = 2)
+# points(T1, H11.hat[, "overall"], type = "b", lty = 3)
+# legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
+```
+
+```{r}
+G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
 G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv)) 
 
-H.tilde <- matrix(nrow = length(knot), ncol = 3)
-colnames(H.tilde) <- c("contr", "treat", "overall")
+H11.tilde <- matrix(nrow = length(Y1), ncol = 3)
+colnames(H11.tilde) <- c("contr", "treat", "overall")
 
-for(i in seq(1, length(knot))) {
-  w <- 1 - pexp(knot[i], rate = 0.5)
-  H.tilde[i, "contr"] <- mean(X1 == 0 & Y1 > knot[i]) / w
-  H.tilde[i, "treat"] <- mean(X1 == 1 & Y1 > knot[i]) / w
-  H.tilde[i, "overall"] <- mean(Y1 > knot[i]) / w
+for(i in seq(1, length(Y1))) {
+  H11.tilde[i, "contr"] <- mean(X1 == 0 & Y1 == Y1[i]) / G_func(Y1[i])
+  H11.tilde[i, "treat"] <- mean(X1 == 1 & Y1 == Y1[i]) / G_func(Y1[i])
+  H11.tilde[i, "overall"] <- mean(Y1 == Y1[i]) / G_func(Y1[i])
 }
 
-plot(knot, H.tilde[, "contr"], type = "l", ylim = c(0, 1))
-points(knot, H.tilde[, "treat"], type = "l", lty = 2)
-points(knot, H.tilde[, "overall"], type = "l", lty = 3)
-legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
+# plot(knot, H10.tilde[, "contr"], type = "l", ylim = c(0, 1))
+# points(knot, H10.tilde[, "treat"], type = "l", lty = 2)
+# points(knot, H10.tilde[, "overall"], type = "l", lty = 3)
+# legend("topright", legend = c("control", "treatment", "overall"), lty = 1:3)
 ```
 
-```{r}
-plot(knot, H.true[, "contr"], type = "l")
-points(knot, H.hat[, "contr"], type = "l", lty = 2)
-points(knot, H.tilde[, "contr"], type = "l", lty = 3)
-legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
 
-
-plot(knot, H.true[, "treat"], type = "l")
-points(knot, H.hat[, "treat"], type = "l", lty = 2)
-points(knot, H.tilde[, "treat"], type = "l", lty = 3)
-legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
-
-
-plot(knot, H.true[, "overall"], type = "l")
-points(knot, H.hat[, "overall"], type = "l", lty = 2)
-points(knot, H.tilde[, "overall"], type = "l", lty = 3)
-legend("topright", legend = c("true", "hat", "tilde"), lty = 1:3)
-```
-
-```{r}
-plot(G_func, ylim = c(0, 1))
-```
 
