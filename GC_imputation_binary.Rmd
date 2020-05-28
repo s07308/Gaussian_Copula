@@ -19,7 +19,7 @@ library(survival)
 size <- 50
 
 ## correlation of latent Gaussian distribution
-rho <- 0.5 
+rho <- -0.5 
 
 ## correlation matrix of latent Gaussian
 corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
@@ -75,27 +75,27 @@ H11.hat <- function(x, s, X1.obs = X1, T1.obs = T1) {
 
 ## IPCW estimator
 ```{r}
-G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
-G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
-max(G.fit$time)
-
-H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
-  if(G_func(y) == 0) {
-    print(y)
-    # Sys.sleep(10)
-  }
-  
-  return(mean(X1.obs == x & T1.obs > y) / G_func(y))
-}
-
-H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
-  if(G_func(y) == 0) {
-    print(y)
-    # Sys.sleep(10)
-  }
-  
-  return(mean(X1.obs == x & T1.obs == y) / G_func(y))
-}
+# G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+# G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+# max(G.fit$time)
+# 
+# H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   if(G_func(y) == 0) {
+#     print(y)
+#     # Sys.sleep(10)
+#   }
+#   
+#   return(mean(X1.obs == x & T1.obs > y) / G_func(y))
+# }
+# 
+# H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   if(G_func(y) == 0) {
+#     print(y)
+#     # Sys.sleep(10)
+#   }
+#   
+#   return(mean(X1.obs == x & T1.obs == y) / G_func(y))
+# }
 ```
 
 
@@ -172,9 +172,9 @@ for(k in seq(1, nrow(df.pair))) {
         c.hat[k] <- H10.hat.i / H10.hat.ip
         d.hat[k] <- 1 - c.hat[k]
       } else {
-        integral.c <- numeric(sum(T1 > df.pair[k, 2]))
-        integral.d <- numeric(sum(T1 > df.pair[k, 2]))
-        t <- T1[T1 > df.pair[k, 2]]
+        integral.c <- numeric(sum(T1 >= df.pair[k, 2]))
+        integral.d <- numeric(sum(T1 >= df.pair[k, 2]))
+        t <- T1[T1 >= df.pair[k, 2]]
         
         for(m in seq(1, length(t))) {
           integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
@@ -210,8 +210,21 @@ for(k in seq(1, nrow(df.pair))) {
       
     }
   }
+  
+  if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+    print(c(k, c.hat[k], d.hat[k]))
+  }
 }
+
+sum(abs(c.hat) > 1)
+sum(abs(d.hat) > 1)
 ```
+
+```{r}
+df.pair[380, ]
+d.hat[380]
+```
+
 
 ```{r}
 sum(c.hat) - sum(d.hat)

@@ -1,0 +1,528 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mvtnorm)
+library(survival)
+```
+
+```{r}
+## generate (Y, delta, X), where X is ternary and Y is lifetime with censoring
+## sample size
+size <- 50
+
+## correlation of latent Gaussian distribution
+rho <- 0.5 
+
+## correlation matrix of latent Gaussian
+corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
+
+## Cutoff points to make ternary variable
+cut.off <- 0 
+
+## Draw a random sample from the latent Gaussian distribution
+Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+
+## Assume that h0(t)=exp(t), and make the lifetime variable
+T1 <- exp(Z[, 1])
+
+## Do discretization to make binary variable
+X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+
+## generate the censoring variable
+C <- rexp(n = size, rate = 0.5)
+
+## Make the censored observation for lifetime
+Y1 <- ifelse(T1 < C, T1, C)
+
+## Indicator to indicate that the lifetime is censored or not
+delta <- ifelse(T1 < C, 1, 0)
+```
+
+```{r}
+mean(1 - delta)
+```
+
+```{r}
+df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+
+k <- 1
+for(i in seq(1, size - 1)) {
+  for(j in seq(i + 1, size)) {
+    df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+    k <- k + 1
+  }
+}
+```
+
+## empirical estimator
+```{r}
+H10.hat <- function(x, y, X1.obs = X1, T1.obs = T1) {
+  return(mean(X1.obs == x & T1.obs > y))
+}
+
+H11.hat <- function(x, s, X1.obs = X1, T1.obs = T1) {
+  return(mean(X1.obs == x & T1.obs == s))
+}
+```
+
+## IPCW estimator
+```{r}
+# G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+# G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+# max(G.fit$time)
+# 
+# H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   if(G_func(y) == 0) {
+#     print(y)
+#     # Sys.sleep(10)
+#   }
+#   
+#   return(mean(X1.obs == x & T1.obs > y) / G_func(y))
+# }
+# 
+# H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   if(G_func(y) == 0) {
+#     print(y)
+#     # Sys.sleep(10)
+#   }
+#   
+#   return(mean(X1.obs == x & T1.obs == y) / G_func(y))
+# }
+```
+
+
+```{r}
+c.hat <- numeric(nrow(df.pair))
+d.hat <- numeric(nrow(df.pair))
+
+for(k in seq(1, nrow(df.pair))) {
+  if(df.pair[k, 1] > df.pair[k, 5]) {
+    ## xi > xi'
+    if(df.pair[k, 2] > df.pair[k, 6]) {
+      ## yi > yi'
+      H10.hat.i <- H10.hat(0, df.pair[k, 2])
+      H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+      
+      if(df.pair[k, 7] == 1) {
+        c.hat[k] <- 1
+        d.hat[k] <- 0
+      } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+        d.hat[k] <- H10.hat.i / H10.hat.ip
+        c.hat[k] <- 1 - d.hat[k]
+      } else {
+        integral.c <- numeric(length = 500 - 1)
+        integral.d <- numeric(length = 500 - 1)
+        t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+        
+        for(m in seq(1, length(t) - 1)) {
+          integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
+          integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                   upper = c(Inf, t[m + 1]),
+                                                   corr = corr.matrix)
+          
+          integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, Inf), corr = corr.matrix)
+          integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, t[m]),
+                                                   upper = c(Inf, t[m + 1]),
+                                                   corr = corr.matrix)
+        }
+        c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+        d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+      }
+      
+    } else {
+      ## yi < yi'
+      H10.hat.i <- H10.hat(1, df.pair[k, 2])
+      H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+      
+      if(df.pair[k, 3] == 1) {
+        c.hat[k] <- 0
+        d.hat[k] <- 1
+      } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+        c.hat[k] <- H10.hat.ip / H10.hat.i
+        d.hat[k] <- 1 - c.hat[k]
+      } else {
+        integral.c <- numeric(length = 500 - 1)
+        integral.d <- numeric(length = 500 - 1)
+        t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+        
+        for(m in seq(1, length(t) - 1)) {
+          integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
+          integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                   upper = c(Inf, t[m + 1]),
+                                                   corr = corr.matrix)
+          
+          integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+          integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                                   upper = c(Inf, t[m]),
+                                                   corr = corr.matrix)
+        }
+        c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+        d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+      }
+      
+    }
+  }
+  
+  if(df.pair[k, 1] < df.pair[k, 5]) {
+    ## xi < xi'
+    
+    if(df.pair[k, 2] > df.pair[k, 6]) {
+      ## yi > yi'
+      H10.hat.i <- H10.hat(1, df.pair[k, 2])
+      H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+      
+      if(df.pair[k, 7] == 1) {
+        c.hat[k] <- 0
+        d.hat[k] <- 1
+      } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+        c.hat[k] <- H10.hat.i / H10.hat.ip
+        d.hat[k] <- 1 - c.hat[k]
+      } else {
+        integral.c <- numeric(length = 500 - 1)
+        integral.d <- numeric(length = 500 - 1)
+        t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+        
+        for(m in seq(1, length(t) - 1)) {
+          integral.c[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+          integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                   upper = c(Inf, Inf),
+                                                   corr = corr.matrix)
+          
+          integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+          integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                                   upper = c(Inf, t[m]),
+                                                   corr = corr.matrix)
+        }
+        c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+        d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+      }
+      
+    } else {
+      ## yi < yi'
+      H10.hat.i <- H10.hat(0, df.pair[k, 2])
+      H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+      
+      if(df.pair[k, 3] == 1) {
+        c.hat[k] <- 1
+        d.hat[k] <- 0
+      } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+        d.hat[k] <- H10.hat.ip / H10.hat.i
+        c.hat[k] <- 1 - d.hat[k]
+      } else {
+        integral.c <- numeric(length = 500 - 1)
+        integral.d <- numeric(length = 500 - 1)
+        t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+        
+        for(m in seq(1, length(t) - 1)) {
+          integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 2])), upper = c(0, t[m]), corr = corr.matrix)
+          integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                   upper = c(Inf, t[m + 1]),
+                                                   corr = corr.matrix)
+          
+          integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+          integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                                   upper = c(Inf, t[m]),
+                                                   corr = corr.matrix)
+        }
+        c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+        d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                              upper = c(0, Inf),
+                                              corr = corr.matrix)
+        d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                       upper = c(Inf, Inf),
+                                       corr = corr.matrix)
+      }
+      
+    }
+  }
+  
+  if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+    print(c(k, c.hat[k], d.hat[k]))
+  }
+}
+
+sum(abs(c.hat) > 1)
+sum(abs(d.hat) > 1)
+```
+
+```{r}
+sum(c.hat) - sum(d.hat)
+sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+```
+
+```{r}
+data.frame(est = c.hat - d.hat,
+           true = (df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1)) 
+
+```
+
+```{r}
+sim <- replicate(n = 2000, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 50
+  rho <- 0.9
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = 4)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = T1) {
+    return(mean(X1.obs == x & T1.obs > y))
+  }
+  
+  H11.hat <- function(x, s, X1.obs = X1, T1.obs = T1) {
+    return(mean(X1.obs == x & T1.obs == s))
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- H10.hat.i / H10.hat.ip
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          integral.c <- numeric(length = 500 - 1)
+          integral.d <- numeric(length = 500 - 1)
+          t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+          
+          for(m in seq(1, length(t) - 1)) {
+            integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
+            integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                     upper = c(Inf, t[m + 1]),
+                                                     corr = corr.matrix)
+            
+            integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, Inf), corr = corr.matrix)
+            integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, t[m]),
+                                                     upper = c(Inf, t[m + 1]),
+                                                     corr = corr.matrix)
+          }
+          c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+          d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- H10.hat.ip / H10.hat.i
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          integral.c <- numeric(length = 500 - 1)
+          integral.d <- numeric(length = 500 - 1)
+          t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+          
+          for(m in seq(1, length(t) - 1)) {
+            integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
+            integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                     upper = c(Inf, t[m + 1]),
+                                                     corr = corr.matrix)
+            
+            integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+            integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                                     upper = c(Inf, t[m]),
+                                                     corr = corr.matrix)
+          }
+          c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+          d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 6])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 2])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+        }
+        
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- H10.hat.i / H10.hat.ip
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          integral.c <- numeric(length = 500 - 1)
+          integral.d <- numeric(length = 500 - 1)
+          t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+          
+          for(m in seq(1, length(t) - 1)) {
+            integral.c[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+            integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                     upper = c(Inf, Inf),
+                                                     corr = corr.matrix)
+            
+            integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+            integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                                     upper = c(Inf, t[m]),
+                                                     corr = corr.matrix)
+          }
+          c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+          d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- H10.hat.ip / H10.hat.i
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          integral.c <- numeric(length = 500 - 1)
+          integral.d <- numeric(length = 500 - 1)
+          t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+          
+          for(m in seq(1, length(t) - 1)) {
+            integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 2])), upper = c(0, t[m]), corr = corr.matrix)
+            integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
+                                                     upper = c(Inf, t[m + 1]),
+                                                     corr = corr.matrix)
+            
+            integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
+            integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                                     upper = c(Inf, t[m]),
+                                                     corr = corr.matrix)
+          }
+          c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          c.hat[k] <- c.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+          d.hat[k] <- sum(integral.d) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
+                                                upper = c(0, Inf),
+                                                corr = corr.matrix)
+          d.hat[k] <- d.hat[k] / pmvnorm(lower = c(0, log(df.pair[k, 6])),
+                                         upper = c(Inf, Inf),
+                                         corr = corr.matrix)
+        }
+        
+      }
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  return(tau.imputed - tau.true)
+})
+```
+
+```{r}
+hist(sim, main = "rho:0.9, censoring rate:0.9", xlab = NA)
+mean(sim, na.rm = TRUE)
+sd(sim, na.rm = TRUE)
+```
