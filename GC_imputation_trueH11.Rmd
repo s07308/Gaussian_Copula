@@ -299,18 +299,19 @@ data.frame(est = c.hat - d.hat,
 ```
 
 ```{r}
-sim <- replicate(n = 2000, expr = {
+sim <- replicate(n = 200, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
   size <- 50
-  rho <- 0.9
+  rho <- -0.9
   corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
   cut.off <- 0
   Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
   T1 <- exp(Z[, 1])
   X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
-  C <- rexp(n = size, rate = 4)
+  C <- rexp(n = size, rate = 1.4)
   Y1 <- ifelse(T1 < C, T1, C)
   delta <- ifelse(T1 < C, 1, 0)
+  part.size <- 100
   
   df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
   k <- 1
@@ -348,9 +349,9 @@ sim <- replicate(n = 2000, expr = {
           d.hat[k] <- H10.hat.i / H10.hat.ip
           c.hat[k] <- 1 - d.hat[k]
         } else {
-          integral.c <- numeric(length = 500 - 1)
-          integral.d <- numeric(length = 500 - 1)
-          t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+          integral.c <- numeric(length = part.size - 1)
+          integral.d <- numeric(length = part.size - 1)
+          t <- seq(log(df.pair[k, 2]), 4, length.out = part.size)
           
           for(m in seq(1, length(t) - 1)) {
             integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
@@ -389,12 +390,13 @@ sim <- replicate(n = 2000, expr = {
           c.hat[k] <- H10.hat.ip / H10.hat.i
           d.hat[k] <- 1 - c.hat[k]
         } else {
-          integral.c <- numeric(length = 500 - 1)
-          integral.d <- numeric(length = 500 - 1)
-          t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+          integral.c <- numeric(length = part.size - 1)
+          integral.d <- numeric(length = part.size - 1)
+          t <- seq(log(df.pair[k, 6]), 4, length.out = part.size)
           
           for(m in seq(1, length(t) - 1)) {
-            integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m]), corr = corr.matrix)
+            if(log(df.pair[k, 6]) > t[m + 1]) print(c(log(df.pair[k, 6]), t[m + 1])) 
+            integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 6])), upper = c(0, t[m + 1]), corr = corr.matrix)
             integral.c[m] <- integral.c[m] * pmvnorm(lower = c(0, t[m]),
                                                      upper = c(Inf, t[m + 1]),
                                                      corr = corr.matrix)
@@ -436,9 +438,9 @@ sim <- replicate(n = 2000, expr = {
           c.hat[k] <- H10.hat.i / H10.hat.ip
           d.hat[k] <- 1 - c.hat[k]
         } else {
-          integral.c <- numeric(length = 500 - 1)
-          integral.d <- numeric(length = 500 - 1)
-          t <- seq(log(df.pair[k, 2]), 3, length.out = 500)
+          integral.c <- numeric(length = part.size - 1)
+          integral.d <- numeric(length = part.size - 1)
+          t <- seq(log(df.pair[k, 2]), 4, length.out = part.size)
           
           for(m in seq(1, length(t) - 1)) {
             integral.c[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
@@ -477,9 +479,9 @@ sim <- replicate(n = 2000, expr = {
           d.hat[k] <- H10.hat.ip / H10.hat.i
           c.hat[k] <- 1 - d.hat[k]
         } else {
-          integral.c <- numeric(length = 500 - 1)
-          integral.d <- numeric(length = 500 - 1)
-          t <- seq(log(df.pair[k, 6]), 3, length.out = 500)
+          integral.c <- numeric(length = part.size - 1)
+          integral.d <- numeric(length = part.size - 1)
+          t <- seq(log(df.pair[k, 6]), 4, length.out = part.size)
           
           for(m in seq(1, length(t) - 1)) {
             integral.c[m] <- pmvnorm(lower = c(-Inf, log(df.pair[k, 2])), upper = c(0, t[m]), corr = corr.matrix)
@@ -489,7 +491,7 @@ sim <- replicate(n = 2000, expr = {
             
             integral.d[m] <- pmvnorm(lower = c(-Inf, t[m]), upper = c(0, t[m + 1]), corr = corr.matrix)
             integral.d[m] <- integral.d[m] * pmvnorm(lower = c(0, log(df.pair[k, 6])),
-                                                     upper = c(Inf, t[m]),
+                                                     upper = c(Inf, t[m + 1]),
                                                      corr = corr.matrix)
           }
           c.hat[k] <- sum(integral.c) / pmvnorm(lower = c(-Inf, log(df.pair[k, 2])),
@@ -522,7 +524,7 @@ sim <- replicate(n = 2000, expr = {
 ```
 
 ```{r}
-hist(sim, main = "rho:0.9, censoring rate:0.9", xlab = NA)
+hist(sim, main = "rho:-0.9, censoring rate:0.5", xlab = NA)
 mean(sim, na.rm = TRUE)
 sd(sim, na.rm = TRUE)
 ```

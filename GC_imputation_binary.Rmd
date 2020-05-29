@@ -16,10 +16,10 @@ library(survival)
 ```{r}
 ## generate (Y, delta, X), where X is ternary and Y is lifetime with censoring
 ## sample size
-size <- 50
+size <- 500
 
 ## correlation of latent Gaussian distribution
-rho <- -0.5 
+rho <- -0.9
 
 ## correlation matrix of latent Gaussian
 corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
@@ -118,14 +118,15 @@ for(k in seq(1, nrow(df.pair))) {
         d.hat[k] <- H10.hat.i / H10.hat.ip
         c.hat[k] <- 1 - d.hat[k]
       } else {
-        integral.c <- numeric(sum(T1 > df.pair[k, 2]))
-        integral.d <- numeric(sum(T1 > df.pair[k, 2]))
-        t <- T1[T1 > df.pair[k, 2]]
+        t <- T1[T1 >= df.pair[k, 2]]
+        integral.c <- numeric(length(t))
+        integral.d <- numeric(length(t))
         
         for(m in seq(1, length(t))) {
           integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
           integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
         }
+        
         c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[2]) / H10.hat.ip
         d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[2]) / H10.hat.ip
       }
@@ -142,13 +143,13 @@ for(k in seq(1, nrow(df.pair))) {
         c.hat[k] <- H10.hat.ip / H10.hat.i
         d.hat[k] <- 1 - c.hat[k]
       } else {
-        integral.c <- numeric(sum(T1 > df.pair[k, 6]))
-        integral.d <- numeric(sum(T1 > df.pair[k, 6]))
-        s <- T1[T1 > df.pair[k, 6]]
+        t <- T1[T1 >= df.pair[k, 6]]
+        integral.c <- numeric(length(t))
+        integral.d <- numeric(length(t))
         
-        for(m in seq(1, length(s))) {
-          integral.c[m] <- H10.hat(1, s[m]) * H11.hat(0, s[m])
-          integral.d[m] <- (H10.hat.i - H10.hat(1, s[m])) * H11.hat(0, s[m])
+        for(m in seq(1, length(t))) {
+          integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+          integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
         }
         c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
         d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
@@ -172,9 +173,9 @@ for(k in seq(1, nrow(df.pair))) {
         c.hat[k] <- H10.hat.i / H10.hat.ip
         d.hat[k] <- 1 - c.hat[k]
       } else {
-        integral.c <- numeric(sum(T1 >= df.pair[k, 2]))
-        integral.d <- numeric(sum(T1 >= df.pair[k, 2]))
         t <- T1[T1 >= df.pair[k, 2]]
+        integral.c <- numeric(length(t))
+        integral.d <- numeric(length(t))
         
         for(m in seq(1, length(t))) {
           integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
@@ -196,13 +197,13 @@ for(k in seq(1, nrow(df.pair))) {
         d.hat[k] <- H10.hat.ip / H10.hat.i
         c.hat[k] <- 1 - d.hat[k]
       } else {
-        integral.c <- numeric(sum(T1 > df.pair[k, 6]))
-        integral.d <- numeric(sum(T1 > df.pair[k, 6]))
-        s <- T1[T1 > df.pair[k, 6]]
+        s <- T1[T1 >= df.pair[k, 6]]
+        integral.c <- numeric(length(s))
+        integral.d <- numeric(length(s))
         
         for(m in seq(1, length(s))) {
           integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
-          integral.d[m] <- H10.hat(0, s[m]) * H11.hat(1, s[m])
+          integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
         }
         c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[6]) / H10.hat.i
         d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[6]) / H10.hat.i
@@ -218,32 +219,46 @@ for(k in seq(1, nrow(df.pair))) {
 
 sum(abs(c.hat) > 1)
 sum(abs(d.hat) > 1)
+sum(is.na(c.hat))
+sum(is.na(d.hat))
 ```
 
 ```{r}
-df.pair[380, ]
-d.hat[380]
+df.pair[580, ]
+
+data.frame(c.hat,
+           d.hat,
+           est = c.hat - d.hat,
+           true = (df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))[580, ]
 ```
 
 
 ```{r}
-sum(c.hat) - sum(d.hat)
+sum(c.hat - d.hat)
 sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+sum(c.hat - d.hat) / sum(X1 == 1) / sum(X1 == 0)
+sum(c.hat - d.hat) / choose(size, 2)
+sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1)) / choose(size, 2)
+```
+
+```{r}
+4 * pmvnorm(lower = c(-Inf, -Inf), upper = c(0, 0), corr = matrix(c(1, -0.9 / sqrt(2), -0.9 / sqrt(2), 1), nrow = 2)) - 2 * pnorm(0)
 ```
 
 
 ## rate of C: 0.07, 0.28, 0.65, 1.4, 4
 ```{r}
-sim <- replicate(n = 2000, expr = {
+iter <- 1
+sim <- replicate(n = 100, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
-  size <- 50
+  size <- 500
   rho <- 0.9
   corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
   cut.off <- 0
   Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
   T1 <- exp(Z[, 1])
   X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
-  C <- rexp(n = size, rate = 4)
+  C <- rexp(n = size, rate = 0.3)
   Y1 <- ifelse(T1 < C, T1, C)
   delta <- ifelse(T1 < C, 1, 0)
   
@@ -283,14 +298,15 @@ sim <- replicate(n = 2000, expr = {
           d.hat[k] <- H10.hat.i / H10.hat.ip
           c.hat[k] <- 1 - d.hat[k]
         } else {
-          integral.c <- numeric(sum(T1 > df.pair[k, 2]))
-          integral.d <- numeric(sum(T1 > df.pair[k, 2]))
-          t <- T1[T1 > df.pair[k, 2]]
+          t <- T1[T1 >= df.pair[k, 2]]
+          integral.c <- numeric(length(t))
+          integral.d <- numeric(length(t))
           
           for(m in seq(1, length(t))) {
             integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
             integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
           }
+          
           c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[2]) / H10.hat.ip
           d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[2]) / H10.hat.ip
         }
@@ -307,13 +323,13 @@ sim <- replicate(n = 2000, expr = {
           c.hat[k] <- H10.hat.ip / H10.hat.i
           d.hat[k] <- 1 - c.hat[k]
         } else {
-          integral.c <- numeric(sum(T1 > df.pair[k, 6]))
-          integral.d <- numeric(sum(T1 > df.pair[k, 6]))
-          s <- T1[T1 > df.pair[k, 6]]
+          t <- T1[T1 >= df.pair[k, 6]]
+          integral.c <- numeric(length(t))
+          integral.d <- numeric(length(t))
           
-          for(m in seq(1, length(s))) {
-            integral.c[m] <- H10.hat(1, s[m]) * H11.hat(0, s[m])
-            integral.d[m] <- (H10.hat.i - H10.hat(1, s[m])) * H11.hat(0, s[m])
+          for(m in seq(1, length(t))) {
+            integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+            integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
           }
           c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
           d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
@@ -337,9 +353,9 @@ sim <- replicate(n = 2000, expr = {
           c.hat[k] <- H10.hat.i / H10.hat.ip
           d.hat[k] <- 1 - c.hat[k]
         } else {
-          integral.c <- numeric(sum(T1 > df.pair[k, 2]))
-          integral.d <- numeric(sum(T1 > df.pair[k, 2]))
-          t <- T1[T1 > df.pair[k, 2]]
+          t <- T1[T1 >= df.pair[k, 2]]
+          integral.c <- numeric(length(t))
+          integral.d <- numeric(length(t))
           
           for(m in seq(1, length(t))) {
             integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
@@ -361,13 +377,13 @@ sim <- replicate(n = 2000, expr = {
           d.hat[k] <- H10.hat.ip / H10.hat.i
           c.hat[k] <- 1 - d.hat[k]
         } else {
-          integral.c <- numeric(sum(T1 > df.pair[k, 6]))
-          integral.d <- numeric(sum(T1 > df.pair[k, 6]))
-          s <- T1[T1 > df.pair[k, 6]]
+          s <- T1[T1 >= df.pair[k, 6]]
+          integral.c <- numeric(length(s))
+          integral.d <- numeric(length(s))
           
           for(m in seq(1, length(s))) {
             integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
-            integral.d[m] <- H10.hat(0, s[m]) * H11.hat(1, s[m])
+            integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
           }
           c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[6]) / H10.hat.i
           d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[6]) / H10.hat.i
@@ -375,10 +391,16 @@ sim <- replicate(n = 2000, expr = {
         
       }
     }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
   }
   
   tau.imputed <- sum(c.hat) - sum(d.hat)
   tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  print(iter)
+  iter <- iter + 1
   
   return(tau.imputed - tau.true)
 })
@@ -389,4 +411,41 @@ hist(sim, main = "rho:0.9, censoring rate:0.9", xlab = NA)
 mean(sim, na.rm = TRUE)
 sd(sim, na.rm = TRUE)
 ```
+
+#### examine the validity of the estimate of integral
+**case 1** <br>
+$X_i = 1, X_{i'} = 0, y_i > y_{i'}, \delta_i = \delta_{i'} = 0$
+
+$$
+\int_{y_i}^{\infty} [H_{10}(0, y_{i'}) - H_{10}(0, t)] H_{11}(1, t) dt
+$$
+
+##### naive estimator (uncensored)
+$$
+\hat{H}_{11}(x, t) = \frac{1}{n} \sum_{i=1}^n I(X_i = x, T_i = t)
+$$
+```{r}
+i <- seq(1, nrow(df.pair))[df.pair[, 3] == 0 & df.pair[, 7] == 0 & df.pair[, 1] > df.pair[, 5] & df.pair[, 2] > df.pair[, 6]][1]
+
+t <- T1[T1 >= df.pair[i, 2]]
+integral <- numeric(length(t))
+
+for(k in seq(1, length(t))) {
+  integral[k] <- (H10.hat(x = 0, y = df.pair[i, 6]) - H10.hat(x = 0, y = t[k])) * H11.hat(x = 1, s = t[k])
+}
+
+sum(integral)
+
+## true value of integral
+t <- seq(log(df.pair[i, 2]), 4, length.out = 500)
+integral.true <- numeric(500 - 1)
+
+for(m in seq(1, length(integral.true))) {
+  integral.true[m] <- pmvnorm(lower = c(-Inf, log(df.pair[i, 6])), upper = c(0, t[m]), corr = corr.matrix)
+  integral.true[m] <- integral.true[m] * pmvnorm(lower = c(0, t[m]), upper = c(Inf, t[m + 1]), corr = corr.matrix)
+}
+
+sum(integral.true)
+```
+
 
