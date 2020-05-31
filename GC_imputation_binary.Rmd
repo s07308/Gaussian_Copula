@@ -19,7 +19,7 @@ library(survival)
 size <- 500
 
 ## correlation of latent Gaussian distribution
-rho <- -0.9
+rho <- 0.9
 
 ## correlation matrix of latent Gaussian
 corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
@@ -37,7 +37,7 @@ T1 <- exp(Z[, 1])
 X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
 
 ## generate the censoring variable
-C <- rexp(n = size, rate = 0.5)
+C <- rexp(n = size, rate = 4)
 
 ## Make the censored observation for lifetime
 Y1 <- ifelse(T1 < C, T1, C)
@@ -248,7 +248,6 @@ sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1)) 
 
 ## rate of C: 0.07, 0.28, 0.65, 1.4, 4
 ```{r}
-iter <- 1
 sim <- replicate(n = 100, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
   size <- 500
@@ -400,16 +399,15 @@ sim <- replicate(n = 100, expr = {
   tau.imputed <- sum(c.hat) - sum(d.hat)
   tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
   print(iter)
-  iter <- iter + 1
   
   return(tau.imputed - tau.true)
 })
 ```
 
 ```{r}
-hist(sim, main = "rho:0.9, censoring rate:0.9", xlab = NA)
-mean(sim, na.rm = TRUE)
-sd(sim, na.rm = TRUE)
+hist(sim / choose(500, 2), main = "rho:0.9, censoring rate:0.9", xlab = NA)
+mean(sim / choose(500, 2), na.rm = TRUE)
+sd(sim / choose(500, 2), na.rm = TRUE)
 ```
 
 #### examine the validity of the estimate of integral

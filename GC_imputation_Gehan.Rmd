@@ -1,0 +1,1671 @@
+---
+title: "GC_imputation_Gehan"
+author: "YI-CHENG, TAI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mvtnorm)
+library(survival)
+```
+
+# ```{r}
+# ## generate (Y, delta, X), where X is ternary and Y is lifetime with censoring
+# ## sample size
+# size <- 50
+# 
+# ## correlation of latent Gaussian distribution
+# rho <- -0.35
+# 
+# ## correlation matrix of latent Gaussian
+# corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2) 
+# 
+# ## Cutoff points to make ternary variable
+# cut.off <- 0 
+# 
+# ## Draw a random sample from the latent Gaussian distribution
+# Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+# 
+# ## Assume that h0(t)=exp(t), and make the lifetime variable
+# T1 <- exp(Z[, 1])
+# 
+# ## Do discretization to make binary variable
+# X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+# 
+# ## generate the censoring variable
+# C <- rexp(n = size, rate = 0.07)
+# 
+# ## Make the censored observation for lifetime
+# Y1 <- ifelse(T1 < C, T1, C)
+# 
+# ## Indicator to indicate that the lifetime is censored or not
+# delta <- ifelse(T1 < C, 1, 0)
+# ```
+# 
+# ```{r}
+# mean(delta)
+# # cor(Z, method = "kendall")
+# ```
+# 
+# ```{r}
+# df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+# 
+# k <- 1
+# for(i in seq(1, size - 1)) {
+#   for(j in seq(i + 1, size)) {
+#     df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+#     k <- k + 1
+#   }
+# }
+# ```
+# 
+# ## IPCW estimator
+# ```{r}
+# G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+# G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+# G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+# G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+# 
+# H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   if(x == 0) {
+#     if(G_func0(y) == 0) return(0)
+#     
+#     return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+#     
+#   } else {
+#     if(G_func1(y) == 0) return(0)
+#     
+#     return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+#   }
+# }
+# 
+# H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+#   left <- H10.hat(x, y - 1e-3)
+#   right <- H10.hat(x, y)
+# 
+#   return(left - right)
+# }
+# ```
+# 
+# ```{r}
+# c.hat <- numeric(nrow(df.pair))
+# d.hat <- numeric(nrow(df.pair))
+# 
+# for(k in seq(1, nrow(df.pair))) {
+#   if(df.pair[k, 1] > df.pair[k, 5]) {
+#     ## xi > xi'
+#     if(df.pair[k, 2] > df.pair[k, 6]) {
+#       ## yi > yi'
+#       H10.hat.i <- H10.hat(0, df.pair[k, 2])
+#       H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+#       
+#       if(df.pair[k, 7] == 1) {
+#         c.hat[k] <- 1
+#         d.hat[k] <- 0
+#       } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+#         d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+#         c.hat[k] <- 1 - d.hat[k]
+#       } else {
+#         t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+#         
+#         if(length(t) == 0) {
+#           c.hat[k] <- 0
+#           d.hat[k] <- 0
+#         } else {
+#           integral.c <- numeric(length(t))
+#           integral.d <- numeric(length(t))
+#           
+#           for(m in seq(1, length(t))) {
+#             integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+#             integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+#           }
+#           
+#           c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+#           d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+#           
+#           c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+#           d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+#         }
+#       }
+#       
+#     } else {
+#       ## yi < yi'
+#       H10.hat.i <- H10.hat(1, df.pair[k, 2])
+#       H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+#       
+#       if(df.pair[k, 3] == 1) {
+#         c.hat[k] <- 0
+#         d.hat[k] <- 1
+#       } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+#         c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+#         d.hat[k] <- 1 - c.hat[k]
+#       } else {
+#         t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+#         
+#         if(length(t) == 0) {
+#           c.hat[k] <- 0
+#           d.hat[k] <- 0
+#         } else {
+#           integral.c <- numeric(length(t))
+#           integral.d <- numeric(length(t))
+#           
+#           for(m in seq(1, length(t))) {
+#             integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+#             integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+#           }
+#           c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+#           d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+#           
+#           c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+#           d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+#         }
+#       }
+#     }
+#   }
+#   
+#   if(df.pair[k, 1] < df.pair[k, 5]) {
+#     ## xi < xi'
+#     
+#     if(df.pair[k, 2] > df.pair[k, 6]) {
+#       ## yi > yi'
+#       H10.hat.i <- H10.hat(1, df.pair[k, 2])
+#       H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+#       
+#       if(df.pair[k, 7] == 1) {
+#         c.hat[k] <- 0
+#         d.hat[k] <- 1
+#       } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+#         c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+#         d.hat[k] <- 1 - c.hat[k]
+#       } else {
+#         t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+#         
+#         if(length(t) == 0) {
+#           c.hat[k] <- 0
+#           d.hat[k] <- 0
+#         } else {
+#           integral.c <- numeric(length(t))
+#           integral.d <- numeric(length(t))
+#           
+#           for(m in seq(1, length(t))) {
+#             integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+#             integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+#           }
+#           c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+#           d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+#           
+#           c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+#           d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+#         }
+#       }
+#       
+#     } else {
+#       ## yi < yi'
+#       H10.hat.i <- H10.hat(0, df.pair[k, 2])
+#       H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+#       
+#       if(df.pair[k, 3] == 1) {
+#         c.hat[k] <- 1
+#         d.hat[k] <- 0
+#       } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+#         d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+#         c.hat[k] <- 1 - d.hat[k]
+#       } else {
+#         s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+#         
+#         if(length(s) == 0) {
+#           c.hat[k] <- 0
+#           d.hat[k] <- 0
+#         } else {
+#           integral.c <- numeric(length(s))
+#           integral.d <- numeric(length(s))
+#           
+#           for(m in seq(1, length(s))) {
+#             integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+#             integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+#           }
+#           c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+#           d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+#           
+#           c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+#           d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+#         }
+#       }
+#       
+#     }
+#   }
+#   
+#   if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+#     print(df.pair[k, ])
+#   }
+#   
+#   if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+#     # print(c(k, c.hat[k], d.hat[k]))
+#   }
+# }
+# 
+# sum(abs(c.hat) > 1)
+# sum(abs(d.hat) > 1)
+# sum(is.na(c.hat))
+# sum(is.na(d.hat))
+# c.hat[c.hat > 1]
+# ```
+# 
+# ```{r}
+# n0 <- sum(X1 == 0)
+# n1 <- sum(X1 == 1)
+# sum(c.hat - d.hat)
+# sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+# 
+# sum(c.hat - d.hat) / n0 / n1 
+# sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1)) / n0 / n1
+# 
+# sum(c.hat - d.hat) / choose(size, 2)
+# mean((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+# ```
+# 
+# ```{r}
+# ## c.true
+# sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0) / n0 / n1
+# 
+# ## c.hat
+# sum(c.hat) / n0 / n1
+# ```
+
+## rate of C: 0.07, 0.28, 0.65, 1.4, 4
+#### true tau: -0.5
+```{r}
+C.rate <- 0.65
+set.seed(20200531)
+sim <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 200
+  rho <- -0.55
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+  G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+  G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+  G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    if(x == 0) {
+      if(G_func0(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+      
+    } else {
+      if(G_func1(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+    }
+  }
+  
+  H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    left <- H10.hat(x, y - 1e-3)
+    right <- H10.hat(x, y)
+    
+    return(left - right)
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+            }
+            
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+              integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(s) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(s))
+            integral.d <- numeric(length(s))
+            
+            for(m in seq(1, length(s))) {
+              integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+              integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      }
+    }
+    
+    if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+      print(df.pair[k, ])
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  c.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0)
+  d.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) < 0)
+  
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
+  gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  
+  return(list(bias = (tau.imputed - tau.true) / n0 / n1,
+              C.rate = mean(delta),
+              tau.true = tau.true / n0 / n1,
+              c.hat = sum(c.hat) / n0 / n1,
+              d.hat = sum(d.hat) / n0 / n1,
+              c.true = c.true / n0 / n1,
+              d.true = d.true / n0 / n1,
+              tau.hat = tau.imputed / n0 / n1,
+              logrank = logrank$chisq,
+              gehan = gehan$chisq))
+})
+```
+
+```{r}
+hist(unlist(sim["bias", ]), main = "tau: -0.5, Censoring rate: 0.9", xlab = NA)
+
+par(mfrow = c(1, 3))
+hist((unlist(sim["tau.hat", ]) / sd(unlist(sim["tau.hat", ]))) ^ 2,
+     main = "proposed",
+     xlab = "chisq")
+hist(unlist(sim["logrank", ]), main = "logrank", xlab = "chisq")
+hist(unlist(sim["gehan", ]), main = "Gehan", xlab = "chisq")
+
+mean(unlist(sim["bias", ]))
+sd(unlist(sim["bias", ]))
+mean(unlist(sim["tau.true", ]))
+mean(unlist(sim["C.rate", ]))
+#sd(unlist(sim["C.rate", ]))
+```
+
+
+
+
+```{r}
+mean(unlist(sim["c.true", ]))
+mean(unlist(sim["c.hat", ]))
+mean(unlist(sim["d.true", ]))
+mean(unlist(sim["d.hat", ]))
+
+## Gehan's test statisitcs
+mean(unlist(sim["c.hat", ]) - unlist(sim["d.hat", ]))
+```
+
+#### true tau: -0.3
+```{r}
+set.seed(20200531)
+sim2 <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 200
+  rho <- -0.33
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+  G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+  G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+  G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    if(x == 0) {
+      if(G_func0(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+      
+    } else {
+      if(G_func1(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+    }
+  }
+  
+  H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    left <- H10.hat(x, y - 1e-3)
+    right <- H10.hat(x, y)
+    
+    return(left - right)
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+            }
+            
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+              integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(s) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(s))
+            integral.d <- numeric(length(s))
+            
+            for(m in seq(1, length(s))) {
+              integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+              integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      }
+    }
+    
+    if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+      print(df.pair[k, ])
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  c.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0)
+  d.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) < 0)
+  
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
+  gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  
+  return(list(bias = (tau.imputed - tau.true) / n0 / n1,
+              C.rate = mean(delta),
+              tau.true = tau.true / n0 / n1,
+              c.hat = sum(c.hat) / n0 / n1,
+              d.hat = sum(d.hat) / n0 / n1,
+              c.true = c.true / n0 / n1,
+              d.true = d.true / n0 / n1,
+              tau.hat = tau.imputed / n0 / n1,
+              logrank = logrank$chisq,
+              gehan = gehan$chisq))
+})
+```
+
+```{r}
+hist(unlist(sim2["bias", ]), main = "tau: -0.5, Censoring rate: 0.9", xlab = NA)
+
+par(mfrow = c(1, 3))
+hist((unlist(sim2["tau.hat", ]) / sd(unlist(sim2["tau.hat", ]))) ^ 2, main = "proposed")
+hist(unlist(sim2["logrank", ]), main = "logrank")
+hist(unlist(sim2["gehan", ]), main = "Gehan")
+
+mean(unlist(sim2["bias", ]))
+sd(unlist(sim2["bias", ]))
+mean(unlist(sim2["tau.true", ]))
+mean(unlist(sim2["C.rate", ]))
+#sd(unlist(sim2["C.rate", ]))
+```
+
+```{r}
+mean(unlist(sim2["c.true", ]))
+mean(unlist(sim2["c.hat", ]))
+mean(unlist(sim2["d.true", ]))
+mean(unlist(sim2["d.hat", ]))
+
+## Gehan's test statisitcs
+mean(unlist(sim2["c.hat", ]) - unlist(sim2["d.hat", ]))
+```
+
+#### true tau: 0
+```{r}
+set.seed(20200531)
+sim3 <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 200
+  rho <- 0
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+  G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+  G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+  G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    if(x == 0) {
+      if(G_func0(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+      
+    } else {
+      if(G_func1(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+    }
+  }
+  
+  H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    left <- H10.hat(x, y - 1e-3)
+    right <- H10.hat(x, y)
+    
+    return(left - right)
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+            }
+            
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+              integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(s) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(s))
+            integral.d <- numeric(length(s))
+            
+            for(m in seq(1, length(s))) {
+              integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+              integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      }
+    }
+    
+    if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+      print(df.pair[k, ])
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  c.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0)
+  d.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) < 0)
+  
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
+  gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  
+  return(list(bias = (tau.imputed - tau.true) / n0 / n1,
+              C.rate = mean(delta),
+              tau.true = tau.true / n0 / n1,
+              c.hat = sum(c.hat) / n0 / n1,
+              d.hat = sum(d.hat) / n0 / n1,
+              c.true = c.true / n0 / n1,
+              d.true = d.true / n0 / n1,
+              tau.hat = tau.imputed / n0 / n1,
+              logrank = logrank$chisq,
+              gehan = gehan$chisq))
+})
+```
+
+```{r}
+hist(unlist(sim3["bias", ]), main = "tau: -0.5, Censoring rate: 0.9", xlab = NA)
+
+par(mfrow = c(1, 3))
+hist((unlist(sim3["tau.hat", ]) / sd(unlist(sim3["tau.hat", ]))) ^ 2, main = "proposed")
+hist(unlist(sim3["logrank", ]), main = "logrank")
+hist(unlist(sim3["gehan", ]), main = "Gehan")
+
+
+mean(unlist(sim3["bias", ]))
+sd(unlist(sim3["bias", ]))
+mean(unlist(sim3["tau.true", ]))
+mean(unlist(sim3["C.rate", ]))
+#sd(unlist(sim3["C.rate", ]))
+```
+
+```{r}
+mean(unlist(sim3["c.true", ]))
+mean(unlist(sim3["c.hat", ]))
+mean(unlist(sim3["d.true", ]))
+mean(unlist(sim3["d.hat", ]))
+
+## Gehan's test statisitcs
+mean(unlist(sim3["c.hat", ]) - unlist(sim3["d.hat", ]))
+```
+
+#### true tau: 0.3
+```{r}
+set.seed(20200531)
+sim4 <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 200
+  rho <- 0.33
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+  G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+  G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+  G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    if(x == 0) {
+      if(G_func0(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+      
+    } else {
+      if(G_func1(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+    }
+  }
+  
+  H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    left <- H10.hat(x, y - 1e-3)
+    right <- H10.hat(x, y)
+    
+    return(left - right)
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+            }
+            
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+              integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(s) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(s))
+            integral.d <- numeric(length(s))
+            
+            for(m in seq(1, length(s))) {
+              integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+              integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      }
+    }
+    
+    if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+      print(df.pair[k, ])
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  c.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0)
+  d.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) < 0)
+  
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
+  gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  
+  return(list(bias = (tau.imputed - tau.true) / n0 / n1,
+              C.rate = mean(delta),
+              tau.true = tau.true / n0 / n1,
+              c.hat = sum(c.hat) / n0 / n1,
+              d.hat = sum(d.hat) / n0 / n1,
+              c.true = c.true / n0 / n1,
+              d.true = d.true / n0 / n1,
+              tau.hat = tau.imputed / n0 / n1,
+              logrank = logrank$chisq,
+              gehan = gehan$chisq))
+})
+```
+
+```{r}
+hist(unlist(sim4["bias", ]), main = "tau: -0.5, Censoring rate: 0.9", xlab = NA)
+
+par(mfrow = c(1, 3))
+hist((unlist(sim4["tau.hat", ]) / sd(unlist(sim4["tau.hat", ]))) ^ 2, main = "proposed")
+hist(unlist(sim4["logrank", ]), main = "logrank")
+hist(unlist(sim4["gehan", ]), main = "Gehan")
+
+
+mean(unlist(sim4["bias", ]))
+sd(unlist(sim4["bias", ]))
+mean(unlist(sim4["tau.true", ]))
+mean(unlist(sim4["C.rate", ]))
+#sd(unlist(sim4["C.rate", ]))
+```
+
+```{r}
+mean(unlist(sim4["c.true", ]))
+mean(unlist(sim4["c.hat", ]))
+mean(unlist(sim4["d.true", ]))
+mean(unlist(sim4["d.hat", ]))
+
+## Gehan's test statisitcs
+mean(unlist(sim4["c.hat", ]) - unlist(sim4["d.hat", ]))
+```
+
+#### true tau: 0.5
+```{r}
+set.seed(20200531)
+sim5 <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+  size <- 200
+  rho <- 0.55
+  corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+  cut.off <- 0
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit1 <- survfit(Surv(time = Y1[X1 == 1], event = 1 - delta[X1 == 1]) ~ 1)
+  G.fit0 <- survfit(Surv(time = Y1[X1 == 0], event = 1 - delta[X1 == 0]) ~ 1)
+  G_func1 <- stepfun(x = G.fit1$time, y = c(1, G.fit1$surv))
+  G_func0 <- stepfun(x = G.fit0$time, y = c(1, G.fit0$surv))
+  
+  H10.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    if(x == 0) {
+      if(G_func0(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 0] > y) / G_func0(y))
+      
+    } else {
+      if(G_func1(y) == 0) return(0)
+      
+      return(mean(T1.obs[X1.obs == 1] > y) / G_func1(y))
+    }
+  }
+  
+  H11.hat <- function(x, y, X1.obs = X1, T1.obs = Y1) {
+    left <- H10.hat(x, y - 1e-3)
+    right <- H10.hat(x, y)
+    
+    return(left - right)
+  }
+  
+  ## imputation
+  c.hat <- numeric(nrow(df.pair))
+  d.hat <- numeric(nrow(df.pair))
+  
+  for(k in seq(1, nrow(df.pair))) {
+    if(df.pair[k, 1] > df.pair[k, 5]) {
+      ## xi > xi'
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          d.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat.ip - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- H10.hat(0, t[m]) * H11.hat(1, t[m])
+            }
+            
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(1, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          c.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- (H10.hat(0, df.pair[k, 6]) - H10.hat(0, t[m])) * H11.hat(1, t[m])
+              integral.d[m] <- (H10.hat.i - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            d.hat[k] <- sum(integral.d) / H10.hat.i / H10.hat(0, df.pair[k, 6])
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(0, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+      }
+    }
+    
+    if(df.pair[k, 1] < df.pair[k, 5]) {
+      ## xi < xi'
+      
+      if(df.pair[k, 2] > df.pair[k, 6]) {
+        ## yi > yi'
+        H10.hat.i <- H10.hat(1, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(1, df.pair[k, 6])
+        
+        if(df.pair[k, 7] == 1) {
+          c.hat[k] <- 0
+          d.hat[k] <- 1
+        } else if(df.pair[k, 3] == 1 & df.pair[k, 7] == 0) {
+          c.hat[k] <- ifelse(H10.hat.ip == 0, 0, H10.hat.i / H10.hat.ip)
+          d.hat[k] <- 1 - c.hat[k]
+        } else {
+          t <- Y1[Y1 > df.pair[k, 2] & X1 == 0]
+          
+          if(length(t) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(t))
+            integral.d <- numeric(length(t))
+            
+            for(m in seq(1, length(t))) {
+              integral.c[m] <- H10.hat(1, t[m]) * H11.hat(0, t[m])
+              integral.d[m] <- (H10.hat.ip - H10.hat(1, t[m])) * H11.hat(0, t[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            d.hat[k] <- sum(integral.d) / H10.hat(0, df.pair[k, 2]) / H10.hat.ip
+            
+            c.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.ip * H10.hat(0, df.pair[k, 2]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      } else {
+        ## yi < yi'
+        H10.hat.i <- H10.hat(0, df.pair[k, 2])
+        H10.hat.ip <- H10.hat(0, df.pair[k, 6])
+        
+        if(df.pair[k, 3] == 1) {
+          c.hat[k] <- 1
+          d.hat[k] <- 0
+        } else if(df.pair[k, 3] == 0 & df.pair[k, 7] == 1) {
+          d.hat[k] <- ifelse(H10.hat.i == 0, 0, H10.hat.ip / H10.hat.i)
+          c.hat[k] <- 1 - d.hat[k]
+        } else {
+          s <- Y1[Y1 > df.pair[k, 6] & X1 == 1]
+          
+          if(length(s) == 0) {
+            c.hat[k] <- 0
+            d.hat[k] <- 0
+          } else {
+            integral.c <- numeric(length(s))
+            integral.d <- numeric(length(s))
+            
+            for(m in seq(1, length(s))) {
+              integral.c[m] <- (H10.hat.i - H10.hat(0, s[m])) * H11.hat(1, s[m])
+              integral.d[m] <- (H10.hat(1, df.pair[k, 6]) - H10.hat(1, s[m])) * H11.hat(0, s[m])
+            }
+            c.hat[k] <- sum(integral.c) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            d.hat[k] <- sum(integral.d) / H10.hat(1, df.pair[k, 6]) / H10.hat.i
+            
+            c.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, c.hat[k])
+            d.hat[k] <- ifelse(H10.hat.i * H10.hat(1, df.pair[k, 6]) == 0, 0, d.hat[k])
+          }
+        }
+        
+      }
+    }
+    
+    if(is.na(c.hat[k]) | is.na(d.hat[k])) {
+      print(df.pair[k, ])
+    }
+    
+    if(abs(c.hat[k]) > 1 | abs(d.hat[k]) > 1) {
+      # print(c(k, c.hat[k], d.hat[k]))
+    }
+  }
+  
+  tau.imputed <- sum(c.hat) - sum(d.hat)
+  tau.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1))
+  
+  c.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) > 0)
+  d.true <- sum((df.pair[, 1] - df.pair[, 5]) * ifelse(df.pair[, 4] > df.pair[, 8], 1, -1) < 0)
+  
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
+  gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  
+  return(list(bias = (tau.imputed - tau.true) / n0 / n1,
+              C.rate = mean(delta),
+              tau.true = tau.true / n0 / n1,
+              c.hat = sum(c.hat) / n0 / n1,
+              d.hat = sum(d.hat) / n0 / n1,
+              c.true = c.true / n0 / n1,
+              d.true = d.true / n0 / n1,
+              tau.hat = tau.imputed / n0 / n1,
+              logrank = logrank$chisq,
+              gehan = gehan$chisq))
+})
+```
+
+```{r}
+hist(unlist(sim5["bias", ]), main = "tau: -0.5, Censoring rate: 0.9", xlab = NA)
+
+par(mfrow = c(1, 3))
+hist((unlist(sim5["tau.hat", ]) / sd(unlist(sim5["tau.hat", ]))) ^ 2, main = "proposed")
+hist(unlist(sim5["logrank", ]), main = "logrank")
+hist(unlist(sim5["gehan", ]), main = "Gehan")
+
+
+mean(unlist(sim5["bias", ]))
+sd(unlist(sim5["bias", ]))
+mean(unlist(sim5["tau.true", ]))
+mean(unlist(sim5["C.rate", ]))
+#sd(unlist(sim5["C.rate", ]))
+```
+
+```{r}
+mean(unlist(sim5["c.true", ]))
+mean(unlist(sim5["c.hat", ]))
+mean(unlist(sim5["d.true", ]))
+mean(unlist(sim5["d.hat", ]))
+
+## Gehan's test statisitcs
+mean(unlist(sim5["c.hat", ]) - unlist(sim5["d.hat", ]))
+```
+
+```{r}
+par(mfrow = c(2, 3))
+hist(unlist(sim["bias", ]), main = "tau: -0.5", xlab = NA)
+hist(unlist(sim2["bias", ]), main = "tau: -0.3", xlab = NA)
+hist(unlist(sim3["bias", ]), main = "tau: 0", xlab = NA)
+hist(unlist(sim4["bias", ]), main = "tau: 0.3", xlab = NA)
+hist(unlist(sim5["bias", ]), main = "tau: 0.5", xlab = NA)
+```
+
+```{r}
+par(mfrow = c(3, 3))
+hist((unlist(sim["tau.hat", ]) / sd(unlist(sim["tau.hat", ]))) ^ 2,
+     main = "proposed; tau:-0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim["logrank", ]),
+     main = "logrank; tau:-0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim["gehan", ]),
+     main = "Gehan; tau:-0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+
+hist((unlist(sim2["tau.hat", ]) / sd(unlist(sim2["tau.hat", ]))) ^ 2,
+     main = "proposed; tau:-0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim2["logrank", ]),
+     main = "logrank; tau:-0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim2["gehan", ]),
+     main = "Gehan; tau:-0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+
+hist((unlist(sim3["tau.hat", ]) / sd(unlist(sim3["tau.hat", ]))) ^ 2,
+     main = "proposed; tau:0",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim3["logrank", ]),
+     main = "logrank; tau:0",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim3["gehan", ]),
+     main = "Gehan; tau:0",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+
+par(mfrow = c(3, 3))
+hist((unlist(sim4["tau.hat", ]) / sd(unlist(sim4["tau.hat", ]))) ^ 2,
+     main = "proposed; tau:0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim4["logrank", ]),
+     main = "logrank; tau:0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim4["gehan", ]),
+     main = "Gehan; tau:0.3",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+
+hist((unlist(sim5["tau.hat", ]) / sd(unlist(sim5["tau.hat", ]))) ^ 2,
+     main = "proposed; tau:0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim5["logrank", ]),
+     main = "logrank; tau:0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+hist(unlist(sim5["gehan", ]),
+     main = "Gehan; tau:0.5",
+     xlab = "chisq",
+     xlim = c(0, 100),
+     ylim = c(0, 400))
+```
+
