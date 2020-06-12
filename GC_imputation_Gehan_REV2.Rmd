@@ -8,8 +8,10 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+## rate of C: 0.07, 0.28, 0.65, 1.4, 4
 ```{r}
-C.rate <- 0.65
+C.rate <- 1.4
 set.seed(20200531)
 sim <- replicate(n = 500, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
@@ -255,7 +257,6 @@ mean(unlist(sim["bias", ]))
 sd(unlist(sim["bias", ]))
 mean(unlist(sim["tau.true", ]))
 mean(unlist(sim["C.rate", ]))
-#sd(unlist(sim["C.rate", ]))
 ```
 
 ```{r}
@@ -264,9 +265,17 @@ mean(unlist(sim["c.hat", ]))
 mean(unlist(sim["d.true", ]))
 mean(unlist(sim["d.hat", ]))
 
-## Gehan's test statisitcs
+## proposed test statisitcs
 mean(unlist(sim["c.hat", ]) - unlist(sim["d.hat", ]))
 ```
+
+```{r}
+proposed.ts <- (unlist(sim["tau.hat", ]) / sd(unlist(sim["tau.hat", ]))) ^ 2
+mean(proposed.ts > qchisq(0.95, df = 1))
+mean(unlist(sim["logrank", ]) > qchisq(0.95, df = 1))
+mean(unlist(sim["gehan", ]) > qchisq(0.95, df = 1))
+```
+
 
 ```{r}
 set.seed(20200531)
