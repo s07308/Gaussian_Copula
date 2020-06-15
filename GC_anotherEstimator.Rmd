@@ -1,0 +1,202 @@
+---
+title: "Another estimator of Kendall's tau"
+author: "YI-CHENG, TAI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mvtnorm)
+library(survival)
+```
+
+There are continuous random variables $(T, X_2)$, where $T$ is subject to censoring, $C$. <br>
+```{r}
+set.seed(20200614)
+C.rate <- 0.07
+## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
+size <- 200
+rho <- -0.55
+corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+T1 <- exp(Z[, 1])
+X2 <- Z[, 2]
+C <- rexp(n = size, rate = C.rate)
+Y1 <- ifelse(T1 < C, T1, C)
+delta <- ifelse(T1 < C, 1, 0)
+```
+
+#### Kaplan-Meier estimate of the censoring, $C$
+```{r}
+G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+```
+
+#### True Value of concordance and discordance
+```{r}
+df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+k <- 1
+for(i in seq(1, size - 1)) {
+  for(j in seq(i + 1, size)) {
+    df.pair[k, ] <- c(X2[i], Y1[i], delta[i], T1[i], X2[j], Y1[j], delta[j], T1[j])
+    k <- k + 1
+  }
+}
+
+c1 <- mean(df.pair[, 4] > df.pair[, 8] & df.pair[, 1] > df.pair[, 5])
+c2 <- mean(df.pair[, 4] < df.pair[, 8] & df.pair[, 1] < df.pair[, 5])
+c1 + c2 ## concordance
+
+d1 <- mean(df.pair[, 4] > df.pair[, 8] & df.pair[, 1] < df.pair[, 5])
+d2 <- mean(df.pair[, 4] < df.pair[, 8] & df.pair[, 1] > df.pair[, 5])
+d1 + d2 ## discordance
+```
+
+#### Estimate for concordance with known $G$
+```{r}
+G.ip <- 1 - pexp(q = df.pair[, 6], rate = C.rate)
+G.i <- 1 - pexp(q = df.pair[, 2], rate = C.rate)
+
+# sum(G.ip == 0)
+# sum(G.i == 0)
+
+c1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.ip ^ 2)
+c2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.i ^ 2)
+mean(c1.h + c2.h)
+```
+
+#### Estimate for discordance with known $G$
+```{r}
+d1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.ip ^ 2)
+d2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.i ^ 2)
+mean(d1.h + d2.h)
+```
+
+#### Estimate for concordance with estimated $G$
+```{r}
+G.ip <- G_func(df.pair[, 6])
+G.i <- G_func(df.pair[, 2])
+
+# sum(G.ip == 0)
+# sum(G.i == 0)
+
+c1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.ip ^ 2)
+c2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.i ^ 2)
+mean(c1.h + c2.h)
+```
+
+#### Estimate for discordance with estimated $G$
+```{r}
+d1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.ip ^ 2)
+d2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.i ^ 2)
+mean(d1.h + d2.h)
+```
+
+#### Monte-Carlo Simulation
+rho.seq = c(-0.7, -0.45, 0, 0.45, 0.7)
+rate.seq = c(0.07, 0.28, 0.65, 1.4, 4)
+```{r}
+set.seed(20200614)
+C.rate <- 4
+size <- 200
+rho <- 0.7
+corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
+
+sim <- replicate(n = 500, expr = {
+  ## generate (Y, delta, X), where X is continuous and Y is lifetime with censoring
+  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
+  T1 <- exp(Z[, 1])
+  X2 <- Z[, 2]
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X2[i], Y1[i], delta[i], T1[i], X2[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  ## K-M of Censoring
+  G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+  G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+  
+  ## true concordance
+  c1 <- mean(df.pair[, 4] > df.pair[, 8] & df.pair[, 1] > df.pair[, 5])
+  c2 <- mean(df.pair[, 4] < df.pair[, 8] & df.pair[, 1] < df.pair[, 5])
+  c.true <- c1 + c2 
+  
+  ## true discordance
+  d1 <- mean(df.pair[, 4] > df.pair[, 8] & df.pair[, 1] < df.pair[, 5])
+  d2 <- mean(df.pair[, 4] < df.pair[, 8] & df.pair[, 1] > df.pair[, 5])
+  d.true <- d1 + d2
+  
+  ## true denominator
+  G.ip <- 1 - pexp(q = df.pair[, 6], rate = C.rate)
+  G.i <- 1 - pexp(q = df.pair[, 2], rate = C.rate)
+  
+  ## estimate of c with known G
+  c1.t <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.ip ^ 2)
+  c2.t <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.i ^ 2)
+  c.tilde <- mean(c1.t + c2.t)
+  
+  ## estimate of d with known G
+  d1.t <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.ip ^ 2)
+  d2.t <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.i ^ 2)
+  d.tilde <- mean(d1.t + d2.t)
+  
+  ## estimated denominator
+  G.ip <- G_func(df.pair[, 6])
+  G.i <- G_func(df.pair[, 2])
+  
+  ## estimate of c with estimated G
+  c1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.ip ^ 2)
+  c2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.i ^ 2)
+  c1.h <- ifelse(G.ip == 0, 0, c1.h)
+  c2.h <- ifelse(G.i == 0, 0, c2.h)
+  c.hat <- mean(c1.h + c2.h)
+  
+  ## estimate of d with estimated G
+  d1.h <- (df.pair[, 2] > df.pair[, 6] & df.pair[, 7] == 1 & df.pair[, 1] < df.pair[, 5]) / (G.ip ^ 2)
+  d2.h <- (df.pair[, 2] < df.pair[, 6] & df.pair[, 3] == 1 & df.pair[, 1] > df.pair[, 5]) / (G.i ^ 2)
+  d1.h <- ifelse(G.ip == 0, 0, d1.h)
+  d2.h <- ifelse(G.i == 0, 0, d2.h)
+  d.hat <- mean(d1.h + d2.h)
+  
+  
+  return(list(c.true = c.true, d.true = d.true,
+              c.tilde = c.tilde, d.tilde = d.tilde,
+              c.hat = c.hat, d.hat = d.hat,
+              c.rate = mean(delta)))
+})
+```
+
+```{r}
+mean(unlist(sim["c.true", ]))
+mean(unlist(sim["d.true", ]))
+
+mean(unlist(sim["c.tilde", ]))
+mean(unlist(sim["d.tilde", ]))
+
+mean(unlist(sim["c.hat", ]))
+mean(unlist(sim["d.hat", ]))
+
+
+# mean(unlist(sim["c.true", ]) - unlist(sim["d.true", ]))
+# mean(unlist(sim["c.rate", ]))
+```
+
+```{r}
+sd(unlist(sim["c.tilde", ]))
+sd(unlist(sim["d.tilde", ]))
+
+sd(unlist(sim["c.hat", ]))
+sd(unlist(sim["d.hat", ]))
+```
+
