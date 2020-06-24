@@ -17,13 +17,24 @@ Under this setting, $T_{11} \sim Weibull(\lambda = 1, k = 2)$ and $T_{12} \sim W
 ```{r}
 size <- 200
 X1 <- rbinom(n = size, size = 1, prob = 0.5)
-T11 <- rweibull(n = size, shape = 2)
-T12 <- rweibull(n = size, shape = 0.5)
+T11 <- rweibull(n = size, shape = 2, scale = 4)
+T12 <- rweibull(n = size, shape = 0.5, scale = sqrt(pi))
 T1 <- ifelse(X1 == 1, T11, T12)
 C <- rexp(n = size, rate = 0.3)
 Y1 <- ifelse(T1 < C, T1, C)
 delta <- ifelse(T1 < C, 1, 0)
 ```
+
+```{r}
+mean(T11)
+mean(T12)
+```
+
+```{r}
+sd(T11)
+sd(T12)
+```
+
 
 ```{r}
 df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
@@ -37,14 +48,14 @@ for(i in seq(1, size - 1)) {
 ```
 
 ```{r}
-C.rate <- 0.3
+C.rate <- 0.03
 size <- 200
 set.seed(20200624)
 sim <- replicate(n = 500, expr = {
   ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
   X1 <- rbinom(n = size, size = 1, prob = 0.5)
-  T11 <- rweibull(n = size, shape = 2)
-  T12 <- rweibull(n = size, shape = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 4)
+  T12 <- rweibull(n = size, shape = 0.5, scale = sqrt(pi))
   T1 <- ifelse(X1 == 1, T11, T12)
   C <- rexp(n = size, rate = C.rate)
   Y1 <- ifelse(T1 < C, T1, C)
