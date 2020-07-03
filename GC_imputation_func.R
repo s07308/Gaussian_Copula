@@ -1,158 +1,5 @@
----
-title: "GC_IPCW"
-author: "YI-CHENG, TAI"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
-library(survival)
-library(mvtnorm)
-```
-
-#### Monte-Carlo (IPCW)
-#### c.rate: 0.07, 0.65
-```{r}
-set.seed(20200630)
-
-size <- 200
-rho <- -0.55
-C.rate <- 0.07
-corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
-cut.off <- 0
-
-sim <- replicate(n = 500, expr = {
-  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
-  T1 <- exp(Z[, 1])
-  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
-  C <- rexp(n = size, rate = C.rate)
-  Y1 <- ifelse(T1 < C, T1, C)
-  delta <- ifelse(T1 < C, 1, 0)
-  
-  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
-  k <- 1
-  for(i in seq(1, size - 1)) {
-    for(j in seq(i + 1, size)) {
-      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
-      k <- k + 1
-    }
-  }
-  
-  mw <- 0
-  for(i in seq(1, length(T1[X1 == 1]))) {
-    for(j in seq(1, length(T1[X1 == 0]))) {
-      mw <- mw + ifelse(T1[X1 == 1][i] > T1[X1 == 0][j], 1, -1)
-    }
-  }
-  
-  G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
-  G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
-  G.hat.1 <- G_func(df.pair[, 2])
-  G.hat.2 <- G_func(df.pair[, 6])
-  
-  c.hat.1 <- (df.pair[, 2] > df.pair[, 6]) & (df.pair[, 1] > df.pair[, 5]) & (df.pair[, 7] == 1)
-  c.hat.1 <- c.hat.1 / (G.hat.2 ^ 2)
-  c.hat.1 <- ifelse(is.nan(c.hat.1), 0, c.hat.1)
-  
-  c.hat.2 <- (df.pair[, 2] < df.pair[, 6]) & (df.pair[, 1] < df.pair[, 5]) & (df.pair[, 3] == 1)
-  c.hat.2 <- c.hat.2 / (G.hat.1 ^ 2)
-  c.hat.2 <- ifelse(is.nan(c.hat.2), 0, c.hat.2)
-  
-  d.hat.1 <- (df.pair[, 2] > df.pair[, 6]) & (df.pair[, 1] < df.pair[, 5]) & (df.pair[, 7] == 1)
-  d.hat.1 <- d.hat.1 / (G.hat.2 ^ 2)
-  d.hat.1 <- ifelse(is.nan(d.hat.1), 0, d.hat.1)
-  
-  d.hat.2 <- (df.pair[, 2] < df.pair[, 6]) & (df.pair[, 1] > df.pair[, 5]) & (df.pair[, 3] == 1)
-  d.hat.2 <- d.hat.2 / (G.hat.1 ^ 2)
-  d.hat.2 <- ifelse(is.nan(d.hat.2), 0, d.hat.2)
-  
-  c.hat <- sum(c.hat.1 + c.hat.2)
-  d.hat <- sum(d.hat.1 + d.hat.2)
-  
-  c.true.1 <- (df.pair[, 4] > df.pair[, 8]) & (df.pair[, 1] > df.pair[, 5])
-  c.true.2 <- (df.pair[, 4] < df.pair[, 8]) & (df.pair[, 1] < df.pair[, 5])
-  
-  d.true.1 <- (df.pair[, 4] > df.pair[, 8]) & (df.pair[, 1] < df.pair[, 5])
-  d.true.2 <- (df.pair[, 4] < df.pair[, 8]) & (df.pair[, 1] > df.pair[, 5])
-  
-  c.true <- sum(c.true.1 + c.true.2)
-  d.true <- sum(d.true.1 + d.true.2)
-  
-  n0 <- sum(X1 == 0)
-  n1 <- sum(X1 == 1)
-  
-  return(list(c.hat = c.hat, d.hat = d.hat, tau.hat = (c.hat - d.hat) / n0 / n1,
-              c.true = c.true, d.true = d.true, tau.true = (c.true - d.true) / n0 / n1,
-              mw = mw / n0 / n1,
-              c.rate = mean(delta)))
-})
-```
-
-```{r}
-saveRDS(sim, file = "ipcw_0dot5_0dot5.rds")
-```
-
-```{r}
-sim <- readRDS("ipcw_0dot5_0dot5.rds")
-```
-
-```{r}
-mean(unlist(sim["mw", ]))
-sd(unlist(sim["mw", ]))
-```
-
-```{r}
-mean(unlist(sim["c.true", ]))
-sd(unlist(sim["c.true", ]))
-mean(unlist(sim["c.hat", ]))
-sd(unlist(sim["c.hat", ]))
-```
-
-```{r}
-mean(unlist(sim["d.true", ]))
-sd(unlist(sim["d.true", ]))
-mean(unlist(sim["d.hat", ]))
-sd(unlist(sim["d.hat", ]))
-```
-
-```{r}
-
-mean(unlist(sim["tau.true", ]))
-sd(unlist(sim["tau.true", ]))
-mean(unlist(sim["tau.hat", ]))
-sd(unlist(sim["tau.hat", ]))
-
-# mean(unlist(sim["c.rate", ]))
-```
-
-**Bias**
-```{r}
-mean(unlist(sim["tau.hat", ]) - (0.5))
-sd(unlist(sim["tau.hat", ]) - (0.5))
-```
-
-
-#### Monte-Carlo (imputation)
-#### c.rate: 0.07, 0.65
-```{r}
-C.rate <- 0.65
-size <- 200
-rho <- 0.55
-corr.matrix <- matrix(c(1, rho, rho, 1), nrow = 2)
-cut.off <- 0
-set.seed(20200630)
-
-sim <- replicate(n = 500, expr = {
-  ## generate (Y, delta, X), where X is binary and Y is lifetime with censoring
-  Z <- rmvnorm(n = size, mean = c(0, 0), sigma = corr.matrix)
-  T1 <- exp(Z[, 1])
-  X1 <- ifelse(Z[, 2] < cut.off, 0, 1)
-  C <- rexp(n = size, rate = C.rate)
-  Y1 <- ifelse(T1 < C, T1, C)
-  delta <- ifelse(T1 < C, 1, 0)
+impute_binary_tau <- function(Y1, delta, X1, T1) {
+  size <- length(Y1)
   
   df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
   k <- 1
@@ -357,6 +204,13 @@ sim <- replicate(n = 500, expr = {
   
   logrank <- survdiff(Surv(time = Y1, event = delta) ~ X1)
   gehan <- survdiff(Surv(time = Y1, event = delta) ~ X1, rho = 1)
+  gehan2 <- Gehan_func(Y1, delta, X1)
+  
+  n1 <- sum(X1)
+  n0 <- size - n1
+  mu.1 <- n1 * (n1 + n0 + 1) * 0.5
+  sigma.1 <- sqrt(n1 * n0 * (n1 + n0 + 1) / 12)
+  wilcox <- (sum(rank(T1)[X1 == 1]) - mu.1) / sigma.1
   
   return(list(bias = (tau.imputed - tau.true) / n0 / n1,
               C.rate = mean(delta),
@@ -367,26 +221,39 @@ sim <- replicate(n = 500, expr = {
               d.true = d.true / n0 / n1,
               tau.hat = tau.imputed / n0 / n1,
               logrank = logrank$chisq,
-              gehan = gehan$chisq))
-})
-```
+              wilcox = wilcox ^ 2,
+              gehan = gehan$chisq,
+              gehan2 = gehan2))
+}
 
-```{r}
-saveRDS(sim, file = "imputation_0dot5_0dot5.rds")
-```
+Gehan_func <- function(Y1, delta, X1) {
+  m <- sum(X1 == 1)
+  n <- sum(X1 == 0)
+  Gehan.score <- numeric(length(Y1))
+  
+  for(i in seq(1, length(Y1))) {
+    Gehan.score[i] <- sum(Y1[i] > Y1 & (delta == 1)) - sum(Y1[i] < Y1 & (delta[i] == 1))
+  }
+  
+  ts <- sum(Gehan.score[X1 == 1])
+  sigma2 <- sum(Gehan.score ^ 2) / (m + n)
+  v <- m * n * sigma2 / (m + n - 1)
+  
+  return(list(z = ts / sqrt(v), score = Gehan.score))
+}
 
-```{r}
-sim <- readRDS("imputation_0dot5_0.rds")
-```
-
-```{r}
-mean(unlist(sim["tau.hat", ]))
-sd(unlist(sim["tau.hat", ]))
-```
-
-**Bias**
-```{r}
-mean(unlist(sim["tau.hat", ]) - (0.5))
-sd(unlist(sim["tau.hat", ]) - (0.5))
-```
-
+MannWhitney_func <- function(Y1, delta, X1, T1) {
+  m <- sum(X1 == 1)
+  n <- sum(X1 == 0)
+  MW.score <- numeric(length(T1))
+  
+  for(i in seq(1, length(T1))) {
+    MW.score[i] <- sum(T1[i] > T1) - sum(T1[i] < T1)
+  }
+  
+  ts <- sum(MW.score[X1 == 1])
+  sigma2 <- sum(MW.score ^ 2) / (m + n)
+  v <- m * n * sigma2 / (m + n - 1)
+  
+  return(list(z = sum(ts) / sqrt(v), score = MW.score, tau = sum(ts) / m / n))
+}
