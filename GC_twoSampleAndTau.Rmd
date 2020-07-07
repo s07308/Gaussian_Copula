@@ -1,0 +1,151 @@
+---
+title: "Untitled"
+author: "YI-CHENG, TAI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+```
+
+
+```{r}
+B <- 5000
+size <- 2000
+C.rate <- 0.68
+
+sim <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 1.2)
+  T12 <- rweibull(n = size, shape = 0.5, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  return(list(median1 = median(T11),
+              median2 = median(T12),
+              tau = MannWhitney_func(Y1, delta, X1, T1)$tau))
+})
+
+mean(unlist(sim[1, ]))
+mean(unlist(sim[2, ]))
+mean(unlist(sim[3, ]))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+curve(1 - pweibull(x, shape = 2, scale = 1.2), from = 0, to = 8, xlab = "t", ylab = "survival")
+curve(1 - pweibull(x, shape = 0.5, scale = 2), from = 0, to = 8, lty = 2, add = TRUE)
+legend("topright", legend = c("k=2, lambda=1.2", "k=0.5, lambda=2"), lty = c(1, 2))
+
+curve(dweibull(x, shape = 2, scale = 1.2), from = 0, to = 5, xlab = "t", ylab = "density",
+      ylim = c(0, 1.5))
+curve(dweibull(x, shape = 0.5, scale = 2), from = 0, to = 5, lty = 2, add = TRUE)
+legend("topright", legend = c("k=2, lambda=1.2", "k=0.5, lambda=2"), lty = c(1, 2))
+```
+
+```{r}
+B <- 5000
+size <- 2000
+C.rate <- 1e-5
+
+set.seed(20200706)
+Gehan.sim <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 1.2)
+  T12 <- rweibull(n = size, shape = 0.5, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  return(list(Gehan_func(Y1, delta, X1)$z,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0])))
+})
+
+mean(abs(unlist(Gehan.sim[1, ])) > qnorm(0.975))
+mean(unlist(Gehan.sim[2, ]))
+mean(unlist(Gehan.sim[3, ]))
+```
+
+```{r}
+hist(unlist(Gehan.sim[1, ]))
+```
+
+```{r}
+B <- 5000
+size <- 2000
+C.rate <- 0.68
+
+set.seed(20200706)
+MW.sim <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 1.2)
+  T12 <- rweibull(n = size, shape = 0.5, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  return(list(MannWhitney_func(Y1, delta, X1, T1)$z,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0])))
+})
+
+mean(abs(unlist(MW.sim[1, ])) > qnorm(0.975))
+mean(unlist(MW.sim[2, ]))
+mean(unlist(MW.sim[3, ]))
+```
+
+```{r}
+B <- 5000
+size <- 2000
+C.rate <- 1e-5
+
+set.seed(20200706)
+logrank.sim <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 1.2)
+  T12 <- rweibull(n = size, shape = 0.5, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  return(list(survdiff(Surv(Y1, delta) ~ X1)$chisq,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0])))
+})
+
+mean(unlist(logrank.sim[1, ]) > qchisq(0.95, df = 1))
+mean(unlist(logrank.sim[2, ]))
+mean(unlist(logrank.sim[3, ]))
+```
+
+```{r}
+B <- 5000
+size <- 2000
+C.rate <- 1e-5
+
+set.seed(20200706)
+ks.sim <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 2, scale = 1.2)
+  T12 <- rweibull(n = size, shape = 0.5, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  return(ks.test(x = T11, y = T12, alternative = "two.sided")$p.value)
+})
+
+mean(ks.sim < 0.05)
+```
+
