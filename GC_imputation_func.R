@@ -226,6 +226,56 @@ impute_binary_tau <- function(Y1, delta, X1, T1) {
               gehan2 = gehan2))
 }
 
+ipcw_binary_tau <- function(Y1, delta, X1, T1) {
+  size <- length(Y1)
+  df.pair <- matrix(nrow = choose(n = size, k = 2), ncol = 8)
+  k <- 1
+  for(i in seq(1, size - 1)) {
+    for(j in seq(i + 1, size)) {
+      df.pair[k, ] <- c(X1[i], Y1[i], delta[i], T1[i], X1[j], Y1[j], delta[j], T1[j])
+      k <- k + 1
+    }
+  }
+  
+  G.fit <- survfit(Surv(time = Y1, event = 1 - delta) ~ 1)
+  G_func <- stepfun(x = G.fit$time, y = c(1, G.fit$surv))
+  G.hat.1 <- G_func(df.pair[, 2])
+  G.hat.2 <- G_func(df.pair[, 6])
+  
+  c.hat.1 <- (df.pair[, 2] > df.pair[, 6]) & (df.pair[, 1] > df.pair[, 5]) & (df.pair[, 7] == 1)
+  c.hat.1 <- c.hat.1 / (G.hat.2 ^ 2)
+  c.hat.1 <- ifelse(is.nan(c.hat.1), 0, c.hat.1)
+  
+  c.hat.2 <- (df.pair[, 2] < df.pair[, 6]) & (df.pair[, 1] < df.pair[, 5]) & (df.pair[, 3] == 1)
+  c.hat.2 <- c.hat.2 / (G.hat.1 ^ 2)
+  c.hat.2 <- ifelse(is.nan(c.hat.2), 0, c.hat.2)
+  
+  d.hat.1 <- (df.pair[, 2] > df.pair[, 6]) & (df.pair[, 1] < df.pair[, 5]) & (df.pair[, 7] == 1)
+  d.hat.1 <- d.hat.1 / (G.hat.2 ^ 2)
+  d.hat.1 <- ifelse(is.nan(d.hat.1), 0, d.hat.1)
+  
+  d.hat.2 <- (df.pair[, 2] < df.pair[, 6]) & (df.pair[, 1] > df.pair[, 5]) & (df.pair[, 3] == 1)
+  d.hat.2 <- d.hat.2 / (G.hat.1 ^ 2)
+  d.hat.2 <- ifelse(is.nan(d.hat.2), 0, d.hat.2)
+  
+  c.hat <- sum(c.hat.1 + c.hat.2)
+  d.hat <- sum(d.hat.1 + d.hat.2)
+  
+  c.true.1 <- (df.pair[, 4] > df.pair[, 8]) & (df.pair[, 1] > df.pair[, 5])
+  c.true.2 <- (df.pair[, 4] < df.pair[, 8]) & (df.pair[, 1] < df.pair[, 5])
+  
+  d.true.1 <- (df.pair[, 4] > df.pair[, 8]) & (df.pair[, 1] < df.pair[, 5])
+  d.true.2 <- (df.pair[, 4] < df.pair[, 8]) & (df.pair[, 1] > df.pair[, 5])
+  
+  c.true <- sum(c.true.1 + c.true.2)
+  d.true <- sum(d.true.1 + d.true.2)
+  
+  n0 <- sum(X1 == 0)
+  n1 <- sum(X1 == 1)
+  
+  return((c.hat - d.hat) / n0 / n1)
+}
+
 Gehan_func <- function(Y1, delta, X1) {
   m <- sum(X1 == 1)
   n <- sum(X1 == 0)
@@ -242,7 +292,7 @@ Gehan_func <- function(Y1, delta, X1) {
   return(list(z = ts / sqrt(v), score = Gehan.score))
 }
 
-MannWhitney_func <- function(Y1, delta, X1, T1) {
+MannWhitney_func <- function(X1, T1) {
   m <- sum(X1 == 1)
   n <- sum(X1 == 0)
   MW.score <- numeric(length(T1))
@@ -256,4 +306,42 @@ MannWhitney_func <- function(Y1, delta, X1, T1) {
   v <- m * n * sigma2 / (m + n - 1)
   
   return(list(z = sum(ts) / sqrt(v), score = MW.score, tau = sum(ts) / m / n))
+}
+
+logrank_func <- function(Y1, delta, X1) {
+  m <- sum(X1 == 1)
+  n <- sum(X1 == 0)
+  logrank.score <- numeric(length(Y1))
+  
+  km.est <- survfit(Surv(Y1, delta) ~ 1)
+  km.func <- stepfun(x = km.est$time, y = c(1, km.est$surv))
+  
+  for(i in seq(1, length(Y1))) {
+    logrank.score[i] <- ifelse(delta[i] == 1, -log(km.func(Y1[i])), -log(km.func(Y1[i])) + 1)
+  }
+  
+  ts <- sum(logrank.score[X1 == 1])
+  sigma2 <- sum(logrank.score[logrank.score != Inf] ^ 2) / (m + n)
+  v <- m * n * sigma2 / (m + n - 1)
+  
+  return(list(z = sum(ts) / sqrt(v), score = logrank.score))
+}
+
+logrank_func <- function(Y1, delta, X1) {
+  failure <- Y1[delta == 1]
+  V <- numeric(length(failure))
+  E <- numeric(length(failure))
+  O <- numeric(length(failure))
+  
+  for(i in seq(1, length(failure))) {
+    N <- sum(Y1 >= failure[i])
+    d <- sum(Y1 == failure[i] & delta == 1)
+    n1 <- sum(Y1 >= failure[i] & X1 == 1)
+    
+    E[i] <- d / N * n1
+    V[i] <- E[i] * (N - d) * (N - n1) / N / (N - 1)
+    O[i] <- sum(Y1 == failure[i] & delta == 1 & X1 == 1)
+  }
+  
+  return(sum(O - E) / sqrt(sum(V, na.rm = TRUE)))
 }
