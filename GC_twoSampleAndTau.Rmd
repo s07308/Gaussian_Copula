@@ -125,6 +125,32 @@ hist(unlist(MW.sim2[1, ]), freq = FALSE)
 curve(dnorm(x), from = -3, to = 3, add = TRUE)
 ```
 
+**General Alternative Hypothesis** <br>
+```{r}
+B <- 2000
+size <- 500
+
+set.seed(20200706)
+MW.sim3 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  MW <- MannWhitney_func(X1, T1)
+  
+  return(list(z = MW$z,
+              tau = MW$tau))
+})
+
+mean(abs(unlist(MW.sim3[1, ])) > qnorm(0.975))
+sd(abs(unlist(MW.sim3[1, ])) > qnorm(0.975))
+```
+
+```{r}
+hist(unlist(MW.sim3[1, ]), freq = FALSE)
+curve(dnorm(x), from = -3, to = 3, add = TRUE)
+```
+
 #### Gehan test:
 The case that two samples are i.i.d with light censoring.
 ```{r}
@@ -293,11 +319,53 @@ hist(unlist(Gehan.sim4[5, ]), freq = FALSE, main = "Gehan2")
 curve(dchisq(x, df = 1), from = 0, to = 50, lty = 2, add = TRUE)
 ```
 
+**General Alternative Hypothesis** <br>
+**Crossing case with light censoring** <br>
+```{r}
+B <- 2000
+size <- 500
+C.rate <- 1e-5
+
+set.seed(20200706)
+Gehan.sim5 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  gehan <- Gehan_func(Y1, delta, X1)
+  MW <- MannWhitney_func(X1, T1)
+  
+  return(list(gehan$z,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0]),
+              MW$z))
+})
+
+mean(abs(unlist(Gehan.sim5[1, ])) > qnorm(0.975))
+sd(abs(unlist(Gehan.sim5[1, ])) > qnorm(0.975))
+mean(abs(unlist(Gehan.sim5[4, ])) > qnorm(0.975))
+
+mean(unlist(Gehan.sim5[2, ]))
+mean(unlist(Gehan.sim5[3, ]))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+hist(unlist(Gehan.sim5[1, ]), freq = FALSE, main = "Gehan")
+curve(dnorm(x), from = -5, to = 5, lty = 2, add = TRUE)
+
+hist(unlist(Gehan.sim5[4, ]), freq = FALSE, main = "Mann-Whitney")
+curve(dnorm(x), from = -5, to = 5, lty = 2, add = TRUE)
+```
+
 **Crossing case with heavy censoring** <br>
 ```{r}
 B <- 2000
 size <- 500
-C.rate <- 0.7
+C.rate <- 0.5
 
 set.seed(20200706)
 Gehan.sim6 <- replicate(n = B, expr = {
@@ -472,6 +540,77 @@ hist(unlist(logrank.sim4[1, ]), freq = FALSE, main = "log-rank")
 curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
 ```
 
+**General Alternative Hypothesis** <br>
+**Crossing case with light censoring** <br>
+```{r}
+B <- 2000
+size <- 500
+C.rate <- 1e-5
+
+set.seed(20200706)
+logrank.sim5 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  logrank <- logrank_func(Y1, delta, X1)
+  
+  return(list(logrank,
+              survdiff(Surv(Y1, delta) ~ X1)$chisq,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0])))
+})
+
+mean(abs(unlist(logrank.sim5[1, ])) > qnorm(0.975))
+sd(abs(unlist(logrank.sim5[1, ])) > qnorm(0.975))
+mean(abs(unlist(logrank.sim5[2, ])) > qchisq(0.95, df = 1))
+mean(unlist(logrank.sim5[3, ]))
+mean(unlist(logrank.sim5[4, ]))
+```
+
+```{r}
+hist(unlist(logrank.sim5[1, ]), freq = FALSE, main = "log-rank")
+curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
+```
+
+**Crossing case with light censoring** <br>
+```{r}
+B <- 2000
+size <- 500
+C.rate <- 0.5
+
+set.seed(20200706)
+logrank.sim6 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  logrank <- logrank_func(Y1, delta, X1)
+  
+  return(list(logrank,
+              survdiff(Surv(Y1, delta) ~ X1)$chisq,
+              mean(delta[X1 == 1]),
+              mean(delta[X1 == 0])))
+})
+
+mean(abs(unlist(logrank.sim6[1, ])) > qnorm(0.975))
+sd(abs(unlist(logrank.sim6[1, ])) > qnorm(0.975))
+mean(abs(unlist(logrank.sim6[2, ])) > qchisq(0.95, df = 1))
+mean(unlist(logrank.sim6[3, ]))
+mean(unlist(logrank.sim6[4, ]))
+```
+
+```{r}
+hist(unlist(logrank.sim6[1, ]), freq = FALSE, main = "log-rank")
+curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
+```
+
 #### proposed test (IPCW):
 **The case that two samples are i.i.d with light censoring** <br>
 ```{r}
@@ -586,6 +725,67 @@ sd(abs(IPCW.sim4 / sd(IPCW.sim4)) > qnorm(0.975))
 
 ```{r}
 hist(IPCW.sim4 / sd(IPCW.sim4), freq = FALSE)
+curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
+```
+
+**General Alternative Hypothesis** <br>
+**Crossing case with light censoring** <br>
+```{r}
+B <- 2000
+size <- 500
+C.rate <- 1e-5
+
+set.seed(20200706)
+IPCW.sim5 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  tau.hat <- ipcw_binary_tau(Y1, delta, X1, T1)
+  
+  return(tau.hat)
+})
+
+mean(abs(IPCW.sim5 / sd(IPCW.sim5)) > qnorm(0.975))
+sd(abs(IPCW.sim5 / sd(IPCW.sim5)) > qnorm(0.975))
+```
+
+```{r}
+hist(IPCW.sim5 / sd(IPCW.sim5), freq = FALSE)
+curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
+```
+
+**Crossing case with heavy censoring** <br>
+```{r}
+B <- 2000
+size <- 500
+C.rate <- 0.5
+
+set.seed(20200706)
+IPCW.sim6 <- replicate(n = B, expr = {
+  X1 <- rbinom(n = size, size = 1, prob = 0.5)
+  T11 <- rweibull(n = size, shape = 1, scale = 4)
+  T12 <- rweibull(n = size, shape = 1, scale = 2)
+  T1 <- ifelse(X1 == 1, T11, T12)
+  C <- rexp(n = size, rate = C.rate)
+  Y1 <- ifelse(T1 < C, T1, C)
+  delta <- ifelse(T1 < C, 1, 0)
+  
+  tau.hat <- ipcw_binary_tau(Y1, delta, X1, T1)
+  
+  return(tau.hat)
+})
+
+mean(abs(IPCW.sim6 / sd(IPCW.sim6)) > qnorm(0.975))
+sd(abs(IPCW.sim6 / sd(IPCW.sim6)) > qnorm(0.975))
+```
+
+```{r}
+hist(IPCW.sim6 / sd(IPCW.sim6), freq = FALSE)
 curve(dnorm(x), from = -3, to = 3, lty = 2, add = TRUE)
 ```
 
